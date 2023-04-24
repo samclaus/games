@@ -1,6 +1,8 @@
 package bravewength
 
 import (
+	"encoding/binary"
+	"fmt"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -52,7 +54,13 @@ func (c *client) readPump() {
 
 	c.SetReadLimit(maxMessageSize)
 	c.SetReadDeadline(time.Now().Add(pongWait))
-	c.SetPongHandler(func(string) error { c.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	c.SetPongHandler(func(timestamp string) error {
+		then := int64(binary.BigEndian.Uint64([]byte(timestamp)))
+		now := time.Now()
+		fmt.Printf("Ping is %dms\n", now.UnixMilli()-then)
+		c.SetReadDeadline(now.Add(pongWait))
+		return nil
+	})
 
 	for {
 		_, msg, err := c.ReadMessage()
@@ -97,7 +105,11 @@ func (c *client) writePump() {
 			}
 		case <-pingTicker.C:
 			now := time.Now()
-			if err := c.WriteControl(websocket.PingMessage, []byte(now.UTC().Format(time.RFC3339)), now.Add(sendToClientWait)); err != nil {
+
+			var timestampBuff [8]byte
+			binary.BigEndian.PutUint64(timestampBuff[:], uint64(now.UnixMilli()))
+
+			if err := c.WriteControl(websocket.PingMessage, timestampBuff[:], now.Add(sendToClientWait)); err != nil {
 				return
 			}
 		}
