@@ -96,7 +96,8 @@ func (c *client) writePump() {
 				return
 			}
 		case <-pingTicker.C:
-			if err := c.WriteControl(websocket.PingMessage, nil, time.Now().Add(sendToClientWait)); err != nil {
+			now := time.Now()
+			if err := c.WriteControl(websocket.PingMessage, []byte(now.UTC().Format(time.RFC3339)), now.Add(sendToClientWait)); err != nil {
 				return
 			}
 		}
