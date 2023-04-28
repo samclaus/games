@@ -57,22 +57,17 @@ func decodeRequest(msg []byte) any {
 			return nil
 		}
 
-		clue, countStr, hasCount := bytes.Cut(body, reqBodyDelim)
-		if !hasCount {
-			return reqGiveClue{clue: string(clue)}
+		clue, countStr, _ := bytes.Cut(body, reqBodyDelim)
+		if len(countStr) == 1 {
+			countASCII := countStr[0]
+
+			if countASCII >= 48 && countASCII <= 57 {
+				return reqGiveClue{string(clue), int(countASCII - 48)}
+			}
 		}
 
-		// This could be optimized given it must be a single digit
-		count, err := strconv.Atoi(string(countStr))
-		if err != nil {
-			return nil
-		}
-
-		if count < 0 || count > 9 {
-			return nil
-		}
-
-		return reqGiveClue{string(clue), count}
+		// Count was not provided, was incorrectly encoded, or was not in range [0, 9]
+		return reqGiveClue{clue: string(clue)}
 	case "card-clicked":
 		if !hasBody {
 			return nil

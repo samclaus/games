@@ -57,23 +57,23 @@ func (b *board) reset() {
 	b.FullTypes[blackCardPos] = cardTypeBlack
 	hasColor[blackCardPos] = true
 
-	for numRed := 0; numRed < 8; {
-		redCardPos := rand.Intn(boardSize)
+	for numPurple := 0; numPurple < 8; {
+		purpleCardPos := rand.Intn(boardSize)
 
-		if !hasColor[redCardPos] {
-			b.FullTypes[redCardPos] = cardTypePurple
-			hasColor[redCardPos] = true
-			numRed += 1
+		if !hasColor[purpleCardPos] {
+			b.FullTypes[purpleCardPos] = cardTypePurple
+			hasColor[purpleCardPos] = true
+			numPurple += 1
 		}
 	}
 
-	for numBlue := 0; numBlue < 9; {
-		blueCardPos := rand.Intn(boardSize)
+	for numTeal := 0; numTeal < 9; {
+		tealCardPos := rand.Intn(boardSize)
 
-		if !hasColor[blueCardPos] {
-			b.FullTypes[blueCardPos] = cardTypeTeal
-			hasColor[blueCardPos] = true
-			numBlue += 1
+		if !hasColor[tealCardPos] {
+			b.FullTypes[tealCardPos] = cardTypeTeal
+			hasColor[tealCardPos] = true
+			numTeal += 1
 		}
 	}
 }

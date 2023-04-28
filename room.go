@@ -72,10 +72,13 @@ func (r *room) log(format string, args ...any) {
 
 func (r *room) serializeFullGameStateEvent(showFullCardLayout bool) []byte {
 	type FullStateReloadPayload struct {
-		RoomID  uint32        `json:"room_id"`
-		Players []playerState `json:"players"`
-		Words   []string      `json:"words"`
-		Types   string        `json:"types"`
+		RoomID           uint32        `json:"room_id"`
+		Players          []playerState `json:"players"`
+		Words            []string      `json:"words"`
+		Types            string        `json:"types"`
+		CurrentTurn      role          `json:"current_turn"`
+		CurrentClue      string        `json:"current_clue"`
+		CurrentClueCount int           `json:"current_clue_count"`
 	}
 
 	players := make([]playerState, 0, len(r.clients))
@@ -100,13 +103,29 @@ func (r *room) serializeFullGameStateEvent(showFullCardLayout bool) []byte {
 		[]byte("full-state-reload\n"),
 		mustEncodeJSON(
 			FullStateReloadPayload{
-				RoomID:  r.ID,
-				Players: players,
-				Words:   r.Board.Words[:],
-				Types:   string(typesASCII[:]),
+				RoomID:           r.ID,
+				Players:          players,
+				Words:            r.Board.Words[:],
+				Types:            string(typesASCII[:]),
+				CurrentTurn:      r.currentTurn,
+				CurrentClue:      r.currentClue,
+				CurrentClueCount: r.currentClueCount,
 			},
 		)...,
 	)
+}
+
+func (r *room) tryEmitOrKickUnresponsiveClient(c *client, msg []byte) {
+	select {
+	case c.Send <- msg:
+	default:
+		// If this client's send channel, which uses a sizeable buffer,
+		// is blocked, it means this client is being way too slow to
+		// receive events and needs to be disconnected so we can reclaim
+		// resources (the game would literally be unplayable for the user)
+		close(c.Send)
+		delete(r.clients, c)
+	}
 }
 
 func (r *room) emitFullStateToPlayers() {
@@ -122,16 +141,7 @@ func (r *room) emitFullStateToPlayers() {
 			gameState = gameStateSeeker
 		}
 
-		select {
-		case client.Send <- gameState:
-		default:
-			// If this client's send channel, which uses a sizeable buffer,
-			// is blocked, it means this client is being way too slow to
-			// receive events and needs to be disconnected so we can reclaim
-			// resources (the game would literally be unplayable for the user)
-			close(client.Send)
-			delete(r.clients, client)
-		}
+		r.tryEmitOrKickUnresponsiveClient(client, gameState)
 	}
 }
 
@@ -148,7 +158,12 @@ func (r *room) processEventsUntilClosed() {
 		case c := <-r.register:
 			r.log("Registering client...")
 			r.defaultPlayerNameCounter++
-			r.clients[c] = playerState{Name: "Player " + strconv.FormatUint(r.defaultPlayerNameCounter, 10)}
+			ps := playerState{Name: "Player " + strconv.FormatUint(r.defaultPlayerNameCounter, 10)}
+			r.clients[c] = ps
+			r.tryEmitOrKickUnresponsiveClient(c, append(
+				[]byte("own-player-info\n"),
+				mustEncodeJSON(ps)...,
+			))
 			r.emitFullStateToPlayers()
 			fmt.Println("done.")
 		case c := <-r.unregister:
@@ -192,6 +207,9 @@ func (r *room) handleRequest(req request) {
 	turn := r.currentTurn
 	player := r.clients[req.origin]
 
+	// TODO: don't let spectators make weird requests when in-between games (because currentTurn
+	// will be equal to roleSpectator)
+
 	switch payload := req.payload.(type) {
 	case reqSetOwnRole:
 		newRole := role(payload)
@@ -200,7 +218,7 @@ func (r *room) handleRequest(req request) {
 		// seekers or spectators because they have seen the card layout; we also do not
 		// want to issue state changes if nothing got changed
 		if newRole == player.Role ||
-			(turn != roleSpectator && (player.Role.IsKnower() != newRole.IsKnower())) {
+			(turn != roleSpectator && player.Role.IsKnower() && !newRole.IsKnower()) {
 			return
 		}
 
@@ -209,6 +227,10 @@ func (r *room) handleRequest(req request) {
 		// thing to the map
 		player.Role = newRole
 		r.clients[req.origin] = player
+		r.tryEmitOrKickUnresponsiveClient(req.origin, append(
+			[]byte("own-player-info\n"),
+			mustEncodeJSON(player)...,
+		))
 	case reqGiveClue:
 		// If it is not a knower's turn OR it is not THIS player's turn,
 		// they should not be giving a clue
@@ -216,14 +238,29 @@ func (r *room) handleRequest(req request) {
 			return
 		}
 
+		r.currentTurn = turn.NextTurn()
 		r.currentClue = payload.clue
 		r.currentClueCount = payload.count
 	case reqCardClicked:
-		if turn != player.Role || !turn.IsSeeker() {
+		if turn != player.Role || !turn.IsSeeker() || r.Board.DiscTypes[payload] != cardTypeHidden {
 			return
 		}
 
-		r.Board.DiscTypes[payload] = r.Board.FullTypes[payload]
+		revealedType := r.Board.FullTypes[payload]
+		r.Board.DiscTypes[payload] = revealedType
+
+		if revealedType == cardTypeBlack {
+			// TODO: game over
+		} else if revealedType == cardTypeBlank {
+			r.currentTurn = turn.NextTurn()
+		} else {
+			tealPlayer := player.Role == roleTealKnower || player.Role == roleTealSeeker
+			tealCard := revealedType == cardTypeTeal
+
+			if tealPlayer != tealCard {
+				r.currentTurn = turn.NextTurn()
+			}
+		}
 	case reqResetBoard:
 		r.Board.reset()
 	}

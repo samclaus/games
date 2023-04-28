@@ -63,6 +63,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rm.register = make(chan *client)
 		rm.unregister = make(chan *client)
 		rm.requests = make(chan request, 100)
+		rm.currentTurn = roleTealKnower
 
 		// This is where the magic begins
 		go func() {

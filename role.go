@@ -18,3 +18,11 @@ func (r role) IsSeeker() bool {
 func (r role) IsKnower() bool {
 	return r == rolePurpleKnower || r == roleTealKnower
 }
+
+// NextRole yields the role whose turn comes after this role's.
+func (r role) NextTurn() role {
+	if r > rolePurpleSeeker {
+		return r - 1
+	}
+	return roleTealKnower
+}
