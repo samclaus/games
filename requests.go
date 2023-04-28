@@ -22,8 +22,8 @@ type reqGiveClue struct {
 // underlying integer is the index of the card on the board.
 type reqCardClicked int
 
-// reqResetBoard is a request to reset the board, i.e., restart the game with a new board.
-type reqResetBoard struct{}
+// reqNewGame is a request to start a new game, and will destroy any in-progress game state.
+type reqNewGame struct{}
 
 // reqBodyDelim is the delimiter to mark where the request type ends and the request body
 // (if any) begins.
@@ -83,8 +83,8 @@ func decodeRequest(msg []byte) any {
 		}
 
 		return reqCardClicked(i)
-	case "reset-board":
-		return reqResetBoard{}
+	case "new-game":
+		return reqNewGame{}
 	}
 
 	return nil

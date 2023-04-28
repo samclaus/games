@@ -2,9 +2,11 @@ package bravewength
 
 import "math/rand"
 
+type cardType byte
+
 const boardSize = 25
 const (
-	cardTypeBlank = iota
+	cardTypeBlank cardType = iota
 	cardTypeTeal
 	cardTypePurple
 	cardTypeBlack
@@ -13,17 +15,17 @@ const (
 
 type board struct {
 	Words     [boardSize]string
-	FullTypes [boardSize]byte
-	DiscTypes [boardSize]byte
+	FullTypes [boardSize]cardType
+	DiscTypes [boardSize]cardType
 }
 
 // allCardsBlank is an array of card types with every element set to cardTypeBlank;
 // it is simply an array of zeros
-var allCardsBlank [boardSize]byte
+var allCardsBlank [boardSize]cardType
 
 // allCardsHidden is an array of card types with every element set to cardTypeHidden.
-var allCardsHidden = func() [boardSize]byte {
-	var types [boardSize]byte
+var allCardsHidden = func() [boardSize]cardType {
+	var types [boardSize]cardType
 
 	for i := range types {
 		types[i] = cardTypeHidden
@@ -76,4 +78,29 @@ func (b *board) reset() {
 			numTeal += 1
 		}
 	}
+}
+
+func (b *board) winner() team {
+	numTeal := 0
+	numPurple := 0
+
+	// TODO: use table somehow so that Go does not insert bounds checks?
+	// i.e., have an array containing as many integer elements as there
+	// are card types, and for each loop iteration, just increment the
+	// integer corresponding to the current card type (using it as an index)
+	for _, ct := range b.DiscTypes {
+		if ct == cardTypeTeal {
+			numTeal++
+		} else if ct == cardTypePurple {
+			numPurple++
+		}
+	}
+
+	if numTeal >= 8 {
+		return teamTeal
+	}
+	if numPurple >= 9 {
+		return teamPurple
+	}
+	return teamNone
 }

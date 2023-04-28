@@ -50,6 +50,9 @@ type room struct {
 	currentClue      string
 	currentClueCount int
 
+	// winner is, well, whichever team won the current game, or teamNone if the game is still
+	winner team
+
 	// Set of clients currently connected to the room. I thought about making this a slice,
 	// but a room might have a ton of spectators connected so I'd rather focus on worst-case
 	// performance.
@@ -79,6 +82,7 @@ func (r *room) serializeFullGameStateEvent(showFullCardLayout bool) []byte {
 		CurrentTurn      role          `json:"current_turn"`
 		CurrentClue      string        `json:"current_clue"`
 		CurrentClueCount int           `json:"current_clue_count"`
+		Winner           team          `json:"winner"`
 	}
 
 	players := make([]playerState, 0, len(r.clients))
@@ -86,7 +90,7 @@ func (r *room) serializeFullGameStateEvent(showFullCardLayout bool) []byte {
 		players = append(players, player)
 	}
 
-	var types [boardSize]byte
+	var types [boardSize]cardType
 	var typesASCII [boardSize]byte
 
 	if showFullCardLayout {
@@ -95,8 +99,8 @@ func (r *room) serializeFullGameStateEvent(showFullCardLayout bool) []byte {
 		types = r.Board.DiscTypes
 	}
 
-	for i, cardType := range types {
-		typesASCII[i] = cardTypeToASCII(cardType)
+	for i, ct := range types {
+		typesASCII[i] = ct.ascii()
 	}
 
 	return append(
@@ -110,6 +114,7 @@ func (r *room) serializeFullGameStateEvent(showFullCardLayout bool) []byte {
 				CurrentTurn:      r.currentTurn,
 				CurrentClue:      r.currentClue,
 				CurrentClueCount: r.currentClueCount,
+				Winner:           r.winner,
 			},
 		)...,
 	)
@@ -192,8 +197,9 @@ func (r *room) processEventsUntilClosed() {
 	}
 }
 
-func cardTypeToASCII(cardType byte) byte {
-	return byte(cardType + 48)
+func (ct cardType) ascii() byte {
+	return byte(ct + 48)
+
 }
 
 // handleRequest should only ever be called by the room's event-processing goroutine;
@@ -207,11 +213,10 @@ func (r *room) handleRequest(req request) {
 	turn := r.currentTurn
 	player := r.clients[req.origin]
 
-	// TODO: don't let spectators make weird requests when in-between games (because currentTurn
-	// will be equal to roleSpectator)
-
-	switch payload := req.payload.(type) {
-	case reqSetOwnRole:
+	// Anyone, including spectators, is allowed to make a request to update their role.
+	// Handle this case up front so we can easily skip the rest of the request types by
+	// returning early if the requester is a spectator.
+	if payload, ok := req.payload.(reqSetOwnRole); ok {
 		newRole := role(payload)
 
 		// If a game is in-progress, knowers may change teams but may not change to
@@ -219,7 +224,7 @@ func (r *room) handleRequest(req request) {
 		// want to issue state changes if nothing got changed
 		if newRole == player.Role ||
 			(turn != roleSpectator && player.Role.IsKnower() && !newRole.IsKnower()) {
-			return
+			// TODO: return (I just have this disabled while testing as I develop)
 		}
 
 		// Golang does not let you assign struct fields through a map entry, so we must
@@ -231,10 +236,21 @@ func (r *room) handleRequest(req request) {
 			[]byte("own-player-info\n"),
 			mustEncodeJSON(player)...,
 		))
+		r.emitFullStateToPlayers()
+		return
+	}
+
+	if player.Role == roleSpectator {
+		return
+	}
+
+	switch payload := req.payload.(type) {
 	case reqGiveClue:
-		// If it is not a knower's turn OR it is not THIS player's turn,
-		// they should not be giving a clue
-		if turn != player.Role || !turn.IsKnower() {
+		// Cannot give a clue if:
+		// - The game is over
+		// - It is not the requester's turn
+		// - The requester is not a knower
+		if r.winner != teamNone || player.Role != turn || !player.Role.IsKnower() {
 			return
 		}
 
@@ -242,26 +258,41 @@ func (r *room) handleRequest(req request) {
 		r.currentClue = payload.clue
 		r.currentClueCount = payload.count
 	case reqCardClicked:
-		if turn != player.Role || !turn.IsSeeker() || r.Board.DiscTypes[payload] != cardTypeHidden {
+		// Cannot reveal a card if:
+		// - The game is over
+		// - It is not the requester's turn
+		// - The requester is not a seeker
+		// - The card has already been revealed
+		if r.winner != teamNone ||
+			player.Role != turn ||
+			!turn.IsSeeker() ||
+			r.Board.DiscTypes[payload] != cardTypeHidden {
 			return
 		}
 
 		revealedType := r.Board.FullTypes[payload]
 		r.Board.DiscTypes[payload] = revealedType
 
+		tealPlayer := player.Role == roleTealKnower || player.Role == roleTealSeeker
+
 		if revealedType == cardTypeBlack {
-			// TODO: game over
+			if tealPlayer {
+				r.winner = teamPurple
+			} else {
+				r.winner = teamTeal
+			}
 		} else if revealedType == cardTypeBlank {
 			r.currentTurn = turn.NextTurn()
+		} else if winner := r.Board.winner(); winner != teamNone {
+			r.winner = winner
 		} else {
-			tealPlayer := player.Role == roleTealKnower || player.Role == roleTealSeeker
 			tealCard := revealedType == cardTypeTeal
 
 			if tealPlayer != tealCard {
 				r.currentTurn = turn.NextTurn()
 			}
 		}
-	case reqResetBoard:
+	case reqNewGame:
 		r.Board.reset()
 	}
 
