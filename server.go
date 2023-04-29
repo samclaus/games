@@ -58,12 +58,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Might as well only allocate the room's machinery once we know it has a spot
-		rm.Board.reset()
-		rm.clients = make(map[*client]playerState)
+		rm.serializedInfo = append([]byte("room-info\n"), mustEncodeJSON(roomInfo{rm.ID})...)
+		rm.clients = make(map[*client]playerInfo)
 		rm.register = make(chan *client)
 		rm.unregister = make(chan *client)
 		rm.requests = make(chan request, 100)
-		rm.currentTurn = roleTealKnower
+		rm.newGame()
 
 		// This is where the magic begins
 		go func() {

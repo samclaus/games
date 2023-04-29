@@ -70,6 +70,7 @@ func (c *client) readPump() {
 		if req := decodeRequest(msg); req != nil {
 			c.Room.requests <- request{c, req}
 		} else {
+			// If a client is sending garbage messages, disconnect it
 			break
 		}
 	}

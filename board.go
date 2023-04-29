@@ -6,7 +6,7 @@ type cardType byte
 
 const boardSize = 25
 const (
-	cardTypeBlank cardType = iota
+	cardTypeNeutral cardType = iota
 	cardTypeTeal
 	cardTypePurple
 	cardTypeBlack
@@ -19,7 +19,7 @@ type board struct {
 	DiscTypes [boardSize]cardType
 }
 
-// allCardsBlank is an array of card types with every element set to cardTypeBlank;
+// allCardsBlank is an array of card types with every element set to cardTypeNeutral;
 // it is simply an array of zeros
 var allCardsBlank [boardSize]cardType
 

@@ -8,13 +8,6 @@ import (
 // TODO: give credit in README for excellent WebSocket examples in github.com/gorilla/websocket
 // which basically spelled out efficient room/client implementation.
 
-// playerState represents the in-room state corresponding to a particular player, which
-// get associated with the player's client.
-type playerState struct {
-	Name string `json:"name"`
-	Role role   `json:"role"`
-}
-
 // request contains a request payload and the client it originated from.
 type request struct {
 	origin  *client
@@ -37,26 +30,12 @@ type room struct {
 	ID    uint32
 	Board board
 
-	// defaultPlayerNameCounter is used to generate random initial names for players
-	defaultPlayerNameCounter uint64
-
-	// currentTurn marks which kind of players are currently active (rolePurpleSeeker, etc.).
-	// The roleSpectator (0) value indicates that no game/match/round is in progress, i.e.,
-	// the players must set up a game.
-	currentTurn role
-
-	// currentClue is the clue given by the current team's knower if the current turn is
-	// one of the seekers, and is the empty string otherwise.
-	currentClue      string
-	currentClueCount int
-
-	// winner is, well, whichever team won the current game, or teamNone if the game is still
-	winner team
+	serializedInfo []byte
 
 	// Set of clients currently connected to the room. I thought about making this a slice,
 	// but a room might have a ton of spectators connected so I'd rather focus on worst-case
 	// performance.
-	clients map[*client]playerState
+	clients map[*client]playerInfo
 
 	// Incoming client connections
 	register chan *client
@@ -67,54 +46,50 @@ type room struct {
 	// Incoming requests from connected clients; requests are deserialized (and invalid requests
 	// are rejected) in each client's read goroutine so that the work can be done in parallel
 	requests chan request
+
+	// defaultPlayerNameCounter is used to generate random initial names for players
+	defaultPlayerNameCounter uint64
+
+	// currentTurn marks which kind of players are currently active (rolePurpleSeeker, etc.).
+	// The roleSpectator (0) value indicates that no game/match/round is in progress, i.e.,
+	// the players must set up a game.
+	currentTurn role
+
+	// currentClue is the clue given by the current team's knower if the current turn is
+	// one of the seekers, and is the empty string otherwise.
+	currentClue string
+
+	gameEnded bool
+
+	// winner is whichever team won the game, but only applicable if gameEnded is true. teamNone
+	// indicates that someone canceled the current game, meaning no team won.
+	winner team
+
+	gameLog []gameEventInfo
 }
 
 func (r *room) log(format string, args ...any) {
 	fmt.Printf(fmt.Sprintf("[Room %d] ", r.ID)+format, args...)
 }
 
-func (r *room) serializeFullGameStateEvent(showFullCardLayout bool) []byte {
-	type FullStateReloadPayload struct {
-		RoomID           uint32        `json:"room_id"`
-		Players          []playerState `json:"players"`
-		Words            []string      `json:"words"`
-		Types            string        `json:"types"`
-		CurrentTurn      role          `json:"current_turn"`
-		CurrentClue      string        `json:"current_clue"`
-		CurrentClueCount int           `json:"current_clue_count"`
-		Winner           team          `json:"winner"`
-	}
-
-	players := make([]playerState, 0, len(r.clients))
-	for _, player := range r.clients {
-		players = append(players, player)
-	}
-
-	var types [boardSize]cardType
+func (r *room) serializeFullGameStateEvent(types [boardSize]cardType) []byte {
 	var typesASCII [boardSize]byte
-
-	if showFullCardLayout {
-		types = r.Board.FullTypes
-	} else {
-		types = r.Board.DiscTypes
-	}
 
 	for i, ct := range types {
 		typesASCII[i] = ct.ascii()
 	}
 
 	return append(
-		[]byte("full-state-reload\n"),
+		[]byte("game-state\n"),
 		mustEncodeJSON(
-			FullStateReloadPayload{
-				RoomID:           r.ID,
-				Players:          players,
-				Words:            r.Board.Words[:],
-				Types:            string(typesASCII[:]),
-				CurrentTurn:      r.currentTurn,
-				CurrentClue:      r.currentClue,
-				CurrentClueCount: r.currentClueCount,
-				Winner:           r.winner,
+			gameStateInfo{
+				Words:       r.Board.Words[:],
+				Types:       string(typesASCII[:]),
+				CurrentTurn: r.currentTurn,
+				CurrentClue: r.currentClue,
+				GameEnded:   r.gameEnded,
+				Winner:      r.winner,
+				Log:         r.gameLog,
 			},
 		)...,
 	)
@@ -133,9 +108,29 @@ func (r *room) tryEmitOrKickUnresponsiveClient(c *client, msg []byte) {
 	}
 }
 
-func (r *room) emitFullStateToPlayers() {
-	gameStateKnower := r.serializeFullGameStateEvent(true)
-	gameStateSeeker := r.serializeFullGameStateEvent(false)
+func (r *room) broadcastPlayerState() {
+	nclients := len(r.clients)
+	clientArr := make([]*client, 0, nclients)
+	playerArr := make([]playerInfo, 0, nclients)
+
+	for client, player := range r.clients {
+		clientArr = append(clientArr, client)
+		playerArr = append(playerArr, player)
+	}
+
+	msg := append(
+		[]byte("all-player-info\n"),
+		mustEncodeJSON(playerArr)...,
+	)
+
+	for _, client := range clientArr {
+		r.tryEmitOrKickUnresponsiveClient(client, msg)
+	}
+}
+
+func (r *room) broadcastGameState() {
+	gameStateKnower := r.serializeFullGameStateEvent(r.Board.FullTypes)
+	gameStateSeeker := r.serializeFullGameStateEvent(r.Board.DiscTypes)
 
 	for client, player := range r.clients {
 		var gameState []byte
@@ -158,18 +153,22 @@ func (r *room) processEventsUntilClosed() {
 	defer r.log("Room destroyed\n")
 
 	for {
-		// TODO: actual handling code
 		select {
 		case c := <-r.register:
 			r.log("Registering client...")
 			r.defaultPlayerNameCounter++
-			ps := playerState{Name: "Player " + strconv.FormatUint(r.defaultPlayerNameCounter, 10)}
-			r.clients[c] = ps
-			r.tryEmitOrKickUnresponsiveClient(c, append(
+
+			// NOTE: this is the first time anything will be pushed on the new client's send
+			// channel, so the '<-' operations below literally cannot fail (channel is buffered)
+			ps := playerInfo{Name: "Player " + strconv.FormatUint(r.defaultPlayerNameCounter, 10)}
+			c.Send <- append(
 				[]byte("own-player-info\n"),
 				mustEncodeJSON(ps)...,
-			))
-			r.emitFullStateToPlayers()
+			)
+			c.Send <- r.serializeFullGameStateEvent(r.Board.DiscTypes)
+
+			r.clients[c] = ps
+			r.broadcastPlayerState()
 			fmt.Println("done.")
 		case c := <-r.unregister:
 			r.log("Unregistering client...")
@@ -186,7 +185,7 @@ func (r *room) processEventsUntilClosed() {
 					// TODO: more cleanup necessary here?
 					return
 				} else {
-					r.emitFullStateToPlayers()
+					r.broadcastPlayerState()
 				}
 			} else {
 				fmt.Println("client wasn't in room!")
@@ -199,7 +198,15 @@ func (r *room) processEventsUntilClosed() {
 
 func (ct cardType) ascii() byte {
 	return byte(ct + 48)
+}
 
+func (r *room) newGame() {
+	r.Board.reset()
+	r.currentTurn = roleTealKnower
+	r.currentClue = ""
+	r.gameEnded = false
+	r.winner = teamNone
+	r.gameLog = make([]gameEventInfo, 0, 10)
 }
 
 // handleRequest should only ever be called by the room's event-processing goroutine;
@@ -213,89 +220,172 @@ func (r *room) handleRequest(req request) {
 	turn := r.currentTurn
 	player := r.clients[req.origin]
 
-	// Anyone, including spectators, is allowed to make a request to update their role.
-	// Handle this case up front so we can easily skip the rest of the request types by
-	// returning early if the requester is a spectator.
-	if payload, ok := req.payload.(reqSetOwnRole); ok {
-		newRole := role(payload)
-
-		// If a game is in-progress, knowers may change teams but may not change to
-		// seekers or spectators because they have seen the card layout; we also do not
-		// want to issue state changes if nothing got changed
-		if newRole == player.Role ||
-			(turn != roleSpectator && player.Role.IsKnower() && !newRole.IsKnower()) {
-			// TODO: return (I just have this disabled while testing as I develop)
-		}
-
-		// Golang does not let you assign struct fields through a map entry, so we must
-		// update the local copy of the player information and then reassign the whole
-		// thing to the map
-		player.Role = newRole
-		r.clients[req.origin] = player
-		r.tryEmitOrKickUnresponsiveClient(req.origin, append(
-			[]byte("own-player-info\n"),
-			mustEncodeJSON(player)...,
-		))
-		r.emitFullStateToPlayers()
-		return
-	}
-
-	if player.Role == roleSpectator {
-		return
-	}
-
 	switch payload := req.payload.(type) {
-	case reqGiveClue:
-		// Cannot give a clue if:
-		// - The game is over
-		// - It is not the requester's turn
-		// - The requester is not a knower
-		if r.winner != teamNone || player.Role != turn || !player.Role.IsKnower() {
+	case reqSetOwnName:
+		{
+			// TODO: block duplicate names?
+			// Golang does not let you assign struct fields through a map entry, so we must
+			// update the local copy of the player information and then reassign the whole
+			// thing to the map
+			player.Name = string(payload)
+			r.clients[req.origin] = player
+			r.tryEmitOrKickUnresponsiveClient(req.origin, append(
+				[]byte("own-player-info\n"),
+				mustEncodeJSON(player)...,
+			))
+			r.broadcastPlayerState()
 			return
 		}
+	case reqSetOwnRole:
+		{
+			newRole := role(payload)
+			isKnower := player.Role.IsKnower()
+			willBeKnower := newRole.IsKnower()
 
-		r.currentTurn = turn.NextTurn()
-		r.currentClue = payload.clue
-		r.currentClueCount = payload.count
-	case reqCardClicked:
-		// Cannot reveal a card if:
-		// - The game is over
-		// - It is not the requester's turn
-		// - The requester is not a seeker
-		// - The card has already been revealed
-		if r.winner != teamNone ||
-			player.Role != turn ||
-			!turn.IsSeeker() ||
-			r.Board.DiscTypes[payload] != cardTypeHidden {
+			// If a game is in-progress, knowers may change teams but may not change to
+			// seekers or spectators because they have seen the card layout; we also do not
+			// want to issue state changes if nothing got changed
+			if newRole == player.Role || (!r.gameEnded && isKnower && !willBeKnower) {
+				return
+			}
+
+			// Golang does not let you assign struct fields through a map entry, so we must
+			// update the local copy of the player information and then reassign the whole
+			// thing to the map
+			player.Role = newRole
+			r.clients[req.origin] = player
+			r.tryEmitOrKickUnresponsiveClient(req.origin, append(
+				[]byte("own-player-info\n"),
+				mustEncodeJSON(player)...,
+			))
+			r.broadcastPlayerState()
+
+			// If card visibility changed, we must send them freshly tailored game state
+			if isKnower != willBeKnower {
+				if willBeKnower {
+					r.tryEmitOrKickUnresponsiveClient(
+						req.origin,
+						r.serializeFullGameStateEvent(r.Board.FullTypes),
+					)
+				} else {
+					r.tryEmitOrKickUnresponsiveClient(
+						req.origin,
+						r.serializeFullGameStateEvent(r.Board.DiscTypes),
+					)
+				}
+			}
+
 			return
-		}
-
-		revealedType := r.Board.FullTypes[payload]
-		r.Board.DiscTypes[payload] = revealedType
-
-		tealPlayer := player.Role == roleTealKnower || player.Role == roleTealSeeker
-
-		if revealedType == cardTypeBlack {
-			if tealPlayer {
-				r.winner = teamPurple
-			} else {
-				r.winner = teamTeal
-			}
-		} else if revealedType == cardTypeBlank {
-			r.currentTurn = turn.NextTurn()
-		} else if winner := r.Board.winner(); winner != teamNone {
-			r.winner = winner
-		} else {
-			tealCard := revealedType == cardTypeTeal
-
-			if tealPlayer != tealCard {
-				r.currentTurn = turn.NextTurn()
-			}
 		}
 	case reqNewGame:
-		r.Board.reset()
-	}
+		{
+			if player.Role == roleSpectator {
+				return
+			}
 
-	// TODO: optimize this (send partial state updates, don't send if nothing changed)
-	r.emitFullStateToPlayers()
+			r.newGame()
+			r.gameLog = append(r.gameLog, gameEventInfo{
+				Src:  player,
+				Kind: gameEventTypeGameStarted,
+			})
+			r.broadcastGameState()
+			return
+		}
+	case reqEndGame:
+		{
+			if player.Role == roleSpectator {
+				return
+			}
+
+			r.gameEnded = true
+			r.winner = teamNone
+			r.gameLog = append(r.gameLog, gameEventInfo{
+				Src:  player,
+				Kind: gameEventTypeGameEnded,
+			})
+			r.broadcastGameState()
+			return
+		}
+	case reqRandomizeTeams:
+		// TODO
+	case reqGiveClue:
+		{
+			// Cannot give a clue if:
+			// - The game is over
+			// - It is not the requester's turn
+			// - The requester is not a knower
+			if r.gameEnded || player.Role != turn || !player.Role.IsKnower() {
+				return
+			}
+
+			r.currentTurn = turn.NextTurn()
+			r.currentClue = string(payload)
+			r.gameLog = append(r.gameLog, gameEventInfo{
+				Src:  player,
+				Kind: gameEventTypeClueGiven,
+				Clue: string(payload),
+			})
+			r.broadcastGameState()
+			return
+		}
+	case reqRevealCard:
+		{
+			// Cannot reveal a card if:
+			// - The game is over
+			// - It is not the requester's turn
+			// - The requester is not a seeker
+			// - The card has already been revealed
+			if r.gameEnded ||
+				player.Role != turn ||
+				!player.Role.IsSeeker() ||
+				r.Board.DiscTypes[payload] != cardTypeHidden {
+				return
+			}
+
+			revealedType := r.Board.FullTypes[payload]
+			r.Board.DiscTypes[payload] = revealedType
+
+			r.gameLog = append(r.gameLog, gameEventInfo{
+				Src:      player,
+				Kind:     gameEventTypeCardRevealed,
+				Word:     r.Board.Words[payload],
+				CardType: revealedType,
+			})
+
+			tealPlayer := player.Role == roleTealKnower || player.Role == roleTealSeeker
+
+			if revealedType == cardTypeBlack {
+				r.gameEnded = true
+
+				if tealPlayer {
+					r.winner = teamPurple
+				} else {
+					r.winner = teamTeal
+				}
+
+				r.gameLog = append(r.gameLog, gameEventInfo{
+					Src:  player,
+					Kind: gameEventTypeGameEnded,
+				})
+			} else if revealedType == cardTypeNeutral {
+				r.currentTurn = turn.NextTurn()
+			} else if winner := r.Board.winner(); winner != teamNone {
+				r.gameEnded = true
+				r.winner = winner
+				r.gameLog = append(r.gameLog, gameEventInfo{
+					Src:  player,
+					Kind: gameEventTypeGameEnded,
+				})
+			} else {
+				tealCard := revealedType == cardTypeTeal
+
+				if tealPlayer != tealCard {
+					r.currentTurn = turn.NextTurn()
+				}
+			}
+
+			r.broadcastGameState()
+			return
+		}
+	}
 }
