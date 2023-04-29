@@ -59,16 +59,6 @@ func (b *board) reset() {
 	b.FullTypes[blackCardPos] = cardTypeBlack
 	hasColor[blackCardPos] = true
 
-	for numPurple := 0; numPurple < 8; {
-		purpleCardPos := rand.Intn(boardSize)
-
-		if !hasColor[purpleCardPos] {
-			b.FullTypes[purpleCardPos] = cardTypePurple
-			hasColor[purpleCardPos] = true
-			numPurple += 1
-		}
-	}
-
 	for numTeal := 0; numTeal < 9; {
 		tealCardPos := rand.Intn(boardSize)
 
@@ -76,6 +66,16 @@ func (b *board) reset() {
 			b.FullTypes[tealCardPos] = cardTypeTeal
 			hasColor[tealCardPos] = true
 			numTeal += 1
+		}
+	}
+
+	for numPurple := 0; numPurple < 8; {
+		purpleCardPos := rand.Intn(boardSize)
+
+		if !hasColor[purpleCardPos] {
+			b.FullTypes[purpleCardPos] = cardTypePurple
+			hasColor[purpleCardPos] = true
+			numPurple += 1
 		}
 	}
 }
@@ -96,10 +96,10 @@ func (b *board) winner() team {
 		}
 	}
 
-	if numTeal >= 8 {
+	if numTeal >= 9 {
 		return teamTeal
 	}
-	if numPurple >= 9 {
+	if numPurple >= 8 {
 		return teamPurple
 	}
 	return teamNone
