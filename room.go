@@ -161,6 +161,7 @@ func (r *room) processEventsUntilClosed() {
 			// NOTE: this is the first time anything will be pushed on the new client's send
 			// channel, so the '<-' operations below literally cannot fail (channel is buffered)
 			ps := playerInfo{Name: "Player " + strconv.FormatUint(r.defaultPlayerNameCounter, 10)}
+			c.Send <- r.serializedInfo
 			c.Send <- append(
 				[]byte("own-player-info\n"),
 				mustEncodeJSON(ps)...,
