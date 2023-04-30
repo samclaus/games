@@ -25,6 +25,7 @@ const (
 	gameEventTypeGameEnded
 	gameEventTypeClueGiven
 	gameEventTypeCardRevealed
+	gameEventTypeTurnEnded
 )
 
 // gameEventInfo is a struct used for every type of game event. Fields will

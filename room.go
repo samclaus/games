@@ -388,5 +388,24 @@ func (r *room) handleRequest(req request) {
 			r.broadcastGameState()
 			return
 		}
+	case reqEndTurn:
+		{
+			// Cannot end turn if:
+			// - The game is over
+			// - It is not the requester's turn
+			// - The requester is not a seeker
+			if r.gameEnded ||
+				player.Role != turn ||
+				!player.Role.IsSeeker() {
+				return
+			}
+
+			r.currentTurn = turn.NextTurn()
+			r.gameLog = append(r.gameLog, gameEventInfo{
+				Src:  player,
+				Kind: gameEventTypeTurnEnded,
+			})
+			r.broadcastGameState()
+		}
 	}
 }

@@ -38,6 +38,10 @@ type reqGiveClue string
 // underlying integer is the index of the card on the board.
 type reqRevealCard int
 
+// reqEndTurn is a request to end a seeker's turn. Their turn gets ended automatically if
+// they click a card that does not belong to their team.
+type reqEndTurn struct{}
+
 // reqBodyDelim is the delimiter to mark where the request type ends and the request body
 // (if any) begins.
 var reqBodyDelim = []byte{'\n'}
@@ -95,6 +99,8 @@ func decodeRequest(msg []byte) any {
 		}
 
 		return reqRevealCard(i)
+	case "end-turn":
+		return reqEndTurn{}
 	}
 
 	return nil
