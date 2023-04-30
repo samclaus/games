@@ -43,7 +43,8 @@ type gameEventInfo struct {
 
 type gameStateInfo struct {
 	Words       []string        `json:"words"`
-	Types       string          `json:"types"`
+	DiscTypes   string          `json:"disc_types"`
+	FullTypes   string          `json:"full_types"`
 	CurrentTurn role            `json:"current_turn"`
 	CurrentClue string          `json:"current_clue"`
 	GameEnded   bool            `json:"game_ended"`

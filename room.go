@@ -72,11 +72,26 @@ func (r *room) log(format string, args ...any) {
 	fmt.Printf(fmt.Sprintf("[Room %d] ", r.ID)+format, args...)
 }
 
-func (r *room) serializeFullGameStateEvent(types [boardSize]cardType) []byte {
-	var typesASCII [boardSize]byte
+func (r *room) serializeFullGameStateEvent(showFullLayout bool) []byte {
+	var discTypesASCII [boardSize]byte
 
-	for i, ct := range types {
-		typesASCII[i] = ct.ascii()
+	for i, ct := range r.Board.DiscTypes {
+		discTypesASCII[i] = ct.ascii()
+	}
+
+	var fullTypesASCII string
+
+	if showFullLayout || r.gameEnded {
+		var ascii [boardSize]byte
+
+		for i, ct := range r.Board.FullTypes {
+			ascii[i] = ct.ascii()
+		}
+
+		fullTypesASCII = string(ascii[:])
+	} else {
+		// All hidden
+		fullTypesASCII = "4444444444444444444444444"
 	}
 
 	return append(
@@ -84,7 +99,8 @@ func (r *room) serializeFullGameStateEvent(types [boardSize]cardType) []byte {
 		mustEncodeJSON(
 			gameStateInfo{
 				Words:       r.Board.Words[:],
-				Types:       string(typesASCII[:]),
+				DiscTypes:   string(discTypesASCII[:]),
+				FullTypes:   fullTypesASCII,
 				CurrentTurn: r.currentTurn,
 				CurrentClue: r.currentClue,
 				GameEnded:   r.gameEnded,
@@ -129,8 +145,8 @@ func (r *room) broadcastPlayerState() {
 }
 
 func (r *room) broadcastGameState() {
-	gameStateKnower := r.serializeFullGameStateEvent(r.Board.FullTypes)
-	gameStateSeeker := r.serializeFullGameStateEvent(r.Board.DiscTypes)
+	gameStateKnower := r.serializeFullGameStateEvent(true)
+	gameStateSeeker := r.serializeFullGameStateEvent(false)
 
 	for client, player := range r.clients {
 		var gameState []byte
@@ -166,7 +182,7 @@ func (r *room) processEventsUntilClosed() {
 				[]byte("own-player-info\n"),
 				mustEncodeJSON(ps)...,
 			)
-			c.Send <- r.serializeFullGameStateEvent(r.Board.DiscTypes)
+			c.Send <- r.serializeFullGameStateEvent(false)
 
 			r.clients[c] = ps
 			r.broadcastPlayerState()
@@ -263,17 +279,10 @@ func (r *room) handleRequest(req request) {
 
 			// If card visibility changed, we must send them freshly tailored game state
 			if isKnower != willBeKnower {
-				if willBeKnower {
-					r.tryEmitOrKickUnresponsiveClient(
-						req.origin,
-						r.serializeFullGameStateEvent(r.Board.FullTypes),
-					)
-				} else {
-					r.tryEmitOrKickUnresponsiveClient(
-						req.origin,
-						r.serializeFullGameStateEvent(r.Board.DiscTypes),
-					)
-				}
+				r.tryEmitOrKickUnresponsiveClient(
+					req.origin,
+					r.serializeFullGameStateEvent(willBeKnower),
+				)
 			}
 
 			return
