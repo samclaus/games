@@ -303,7 +303,10 @@ func (r *room) handleRequest(req request) {
 		}
 	case reqEndGame:
 		{
-			if player.Role == roleSpectator {
+			// Cannot end game if:
+			// - No game is in-progress
+			// - The requester is a spectator
+			if r.gameEnded || player.Role == roleSpectator {
 				return
 			}
 
