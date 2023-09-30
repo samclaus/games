@@ -1,4 +1,4 @@
-module github.com/samclaus/games
+module github.com/samclaus/games/bravewength
 
 go 1.19
 
