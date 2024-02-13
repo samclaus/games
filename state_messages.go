@@ -21,14 +21,14 @@ const (
 
 func encodeConnectionState(roomID uint32, clientID uuid.UUID) []byte {
 	msg := make([]byte, 0, 2+4+16)
-	msg = append(msg, targetRoom, roomStateConnection)
+	msg = append(msg, scopeRoom, roomStateConnection)
 	msg = binary.BigEndian.AppendUint32(msg, roomID)
 	return append(msg, clientID[:]...)
 }
 
 func encodeAllMembersState(members []Client) []byte {
 	if len(members) == 0 {
-		return []byte{targetRoom, roomStateAllMembers, '{', '}'}
+		return []byte{scopeRoom, roomStateAllMembers, '{', '}'}
 	}
 
 	jsonLen := 2 + 2 + len(members)*(2+36+1+2+1) - 1
@@ -38,7 +38,7 @@ func encodeAllMembersState(members []Client) []byte {
 	}
 
 	msg := make([]byte, 0, 2+jsonLen)
-	msg = append(msg, targetRoom, roomStateAllMembers, '{')
+	msg = append(msg, scopeRoom, roomStateAllMembers, '{')
 
 	for _, c := range members {
 		msg = append(msg, '"')
@@ -56,32 +56,32 @@ func encodeAllMembersState(members []Client) []byte {
 
 func encodeSetMemberState(clientID uuid.UUID, clientName []byte) []byte {
 	msg := make([]byte, 0, 2+16+len(clientName))
-	msg = append(msg, targetRoom, roomStateSetMember)
+	msg = append(msg, scopeRoom, roomStateSetMember)
 	msg = append(msg, clientID[:]...)
 	return append(msg, clientName...)
 }
 
 func encodeDeleteMemberState(clientID uuid.UUID) []byte {
 	msg := make([]byte, 0, 2+16)
-	msg = append(msg, targetRoom, roomStateDeleteMember)
+	msg = append(msg, scopeRoom, roomStateDeleteMember)
 	return append(msg, clientID[:]...)
 }
 
 func encodeAllChatMessagesState(chat *chatBuffer) []byte {
 	msg := make([]byte, 0, 2+chat.encodedHistoryLen())
-	msg = append(msg, targetRoom, roomStateAllChatMessages)
+	msg = append(msg, scopeRoom, roomStateAllChatMessages)
 	return chat.appendHistory(msg)
 }
 
 func encodeNewChatMessageState(src uuid.UUID, content []byte) []byte {
 	msg := make([]byte, 0, 2+16+len(content))
-	msg = append(msg, targetRoom, roomStateNewChatMessage)
+	msg = append(msg, scopeRoom, roomStateNewChatMessage)
 	msg = append(msg, src[:]...)
 	return append(msg, content...)
 }
 
 func encodeCurrentGameState(gameID string) []byte {
 	msg := make([]byte, 0, 2+len(gameID))
-	msg = append(msg, targetRoom, roomStateCurrentGame)
+	msg = append(msg, scopeRoom, roomStateCurrentGame)
 	return append(msg, gameID...)
 }

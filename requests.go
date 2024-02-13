@@ -1,14 +1,6 @@
 package games
 
 const (
-	// targetRoom means a request/event is intended for the room itself, not whatever
-	// game (if any) is in progress.
-	targetRoom byte = iota
-	// targetGame means a request/event is intended for the current game.
-	targetGame
-)
-
-const (
 	reqSetName byte = iota
 	reqBootGame
 	reqKillGame
@@ -25,10 +17,10 @@ const (
 func (r *room) handleRequest(req request) {
 	// TODO: disconnect any client that sends an invalid request structure?
 
-	if len(req.msg) < 2 || req.msg[0] > targetGame {
+	if len(req.msg) < 2 || req.msg[0] > scopeGame {
 		return
 	}
-	if req.msg[0] == targetGame {
+	if req.msg[0] == scopeGame {
 		if r.currentGame != nil {
 			r.currentGame.HandleRequest(r.members, req.src, req.msg[1:])
 		}

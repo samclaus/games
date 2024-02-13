@@ -3,6 +3,14 @@ package games
 // TODO: give credit in README for excellent WebSocket examples in github.com/gorilla/websocket
 // which basically spelled out efficient room/client implementation.
 
+const (
+	// scopeRoom means a request/event is intended for the room itself, not whatever
+	// game (if any) is in progress.
+	scopeRoom byte = iota
+	// scopeGame means a request/event is intended for the current game.
+	scopeGame
+)
+
 // request contains a request payload and the client it originated from.
 type request struct {
 	src *client

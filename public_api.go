@@ -82,7 +82,7 @@ type Game interface {
 // be interpreted by the current game's client-side code. The slice is
 // allocated with 1+cap bytes to factor in the header byte.
 func AllocGameMessage(cap int) []byte {
-	return append(make([]byte, 0, 1+cap), targetGame)
+	return append(make([]byte, 0, 1+cap), scopeGame)
 }
 
 func NewServer(u websocket.Upgrader, games ...Game) http.Handler {
