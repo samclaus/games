@@ -46,6 +46,18 @@ type room struct {
 	currentGame   GameState
 }
 
+func (r *room) broadcast(msg []byte) {
+	for _, c := range r.members {
+		c.Send(msg)
+	}
+}
+
+func (r *room) broadcastAllMembersState() {
+	if len(r.members) > 0 {
+		r.broadcast(encodeAllMembersState(r.members))
+	}
+}
+
 func (r *room) removeMember(c *client) {
 	pos := -1
 	for i := range r.members {
@@ -75,7 +87,7 @@ func (r *room) removeMember(c *client) {
 	// client read/write goroutines and the room goroutine?
 	close(c.send)
 
-	r.broadcastPlayerState()
+	r.broadcastAllMembersState()
 	r.debug("Unregistered client [ID: %s, Name: %q]", c.id.String(), c.name)
 }
 
@@ -93,10 +105,10 @@ func (r *room) processEventsUntilClosed() {
 
 			// NOTE: this is the first time anything will be pushed on the new client's send
 			// channel, so the '<-' operation below literally cannot fail (channel is buffered)
-			c.send <- encodeConnectionInfoEvent(c, r.ID)
-			c.send <- r.encodeAllChatMessagesEvent()
+			c.send <- encodeConnectionState(r.ID, c.id)
+			c.send <- encodeAllChatMessagesState(r.chat)
 			r.members = append(r.members, c)
-			r.broadcastPlayerState()
+			r.broadcastAllMembersState()
 
 			if r.currentGame != nil {
 				r.currentGame.HandleNewPlayer(c)

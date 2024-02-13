@@ -44,35 +44,32 @@ func (r *room) handleRequest(req request) {
 			// TODO
 		}
 	case reqBootGame:
-		{
-			if r.currentGame != nil {
-				return
-			}
-
-			gameID := string(body)
-
-			if factory := r.gameRegistry[gameID]; factory != nil {
-				r.currentGameID = gameID
-				r.broadcastCurrentGame()
-				r.currentGame = factory.NewInstance()
-			}
+		if r.currentGame != nil {
+			return
 		}
+
+		gameID := string(body)
+
+		if factory := r.gameRegistry[gameID]; factory != nil {
+			r.currentGameID = gameID
+			r.broadcast(encodeCurrentGameState(gameID))
+			r.currentGame = factory.NewInstance()
+		}
+
 	case reqKillGame:
-		{
-			if r.currentGame == nil {
-				return
-			}
+		if r.currentGame == nil {
+			return
+		}
 
-			r.currentGame.Deinit()
-			r.currentGameID = ""
-			r.currentGame = nil
-			r.broadcastCurrentGame()
-		}
+		r.currentGame.Deinit()
+		r.currentGameID = ""
+		r.currentGame = nil
+		r.broadcast(encodeCurrentGameState(""))
+
 	case reqMessageChat:
-		{
-			if r.chat.addMessage(req.src.id, body) {
-				r.broadcastNewChatMessage(req.src.id, body)
-			}
+		if r.chat.addMessage(req.src.id, body) {
+			r.broadcast(encodeNewChatMessageState(req.src.id, body))
 		}
+
 	}
 }
