@@ -39,12 +39,12 @@ func (r *room) handleRequest(req request) {
 
 	switch req.msg[1] {
 	case reqSetName:
-		{
-			// TODO: block duplicate names?
-			// TODO
-		}
+		// TODO: block duplicate names?
+		req.src.name = string(body)
+		r.broadcast(encodeSetMemberState(req.src.id, body))
+
 	case reqBootGame:
-		if r.currentGame != nil {
+		if r.currentGame != nil || len(body) == 0 {
 			return
 		}
 

@@ -87,7 +87,7 @@ func (r *room) removeMember(c *client) {
 	// client read/write goroutines and the room goroutine?
 	close(c.send)
 
-	r.broadcastAllMembersState()
+	r.broadcast(encodeDeleteMemberState(c.id))
 	r.debug("Unregistered client [ID: %s, Name: %q]", c.id.String(), c.name)
 }
 
@@ -108,7 +108,7 @@ func (r *room) processEventsUntilClosed() {
 			c.send <- encodeConnectionState(r.ID, c.id)
 			c.send <- encodeAllChatMessagesState(r.chat)
 			r.members = append(r.members, c)
-			r.broadcastAllMembersState()
+			r.broadcastAllMembersState() // TODO: just set member? still need all members for new client
 
 			if r.currentGame != nil {
 				r.currentGame.HandleNewPlayer(c)

@@ -12,6 +12,8 @@ import (
 const (
 	roomStateConnection      byte = iota // 4-byte room ID (big endian uint32) then 16-byte UUID
 	roomStateAllMembers                  // emits mapping of UUID->name as JSON
+	roomStateSetMember                   // emits name for single member to indicate join or rename
+	roomStateDeleteMember                // emits UUID of player that disconnected
 	roomStateAllChatMessages             // uint16 length of message history, followed by still available messages (each is 16-byte client UUID, 1-byte message length - 1, <message length>-byte contents)
 	roomStateNewChatMessage              // 16-byte client UUID, then rest is message contents
 	roomStateCurrentGame                 // emits UTF-8 encoded game ID, which may be empty (0 bytes)
@@ -50,6 +52,19 @@ func encodeAllMembersState(members []Client) []byte {
 	msg[len(msg)-1] = '}'
 
 	return msg
+}
+
+func encodeSetMemberState(clientID uuid.UUID, clientName []byte) []byte {
+	msg := make([]byte, 0, 2+16+len(clientName))
+	msg = append(msg, targetRoom, roomStateSetMember)
+	msg = append(msg, clientID[:]...)
+	return append(msg, clientName...)
+}
+
+func encodeDeleteMemberState(clientID uuid.UUID) []byte {
+	msg := make([]byte, 0, 2+16)
+	msg = append(msg, targetRoom, roomStateDeleteMember)
+	return append(msg, clientID[:]...)
 }
 
 func encodeAllChatMessagesState(chat *chatBuffer) []byte {
