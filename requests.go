@@ -46,6 +46,7 @@ func (r *room) handleRequest(req request) {
 			r.currentGameID = gameID
 			r.broadcast(encodeCurrentGameState(gameID))
 			r.currentGame = factory.NewInstance()
+			r.currentGame.Init(r.members)
 		}
 
 	case reqKillGame:

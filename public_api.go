@@ -69,7 +69,8 @@ type Game interface {
 	Version() int
 	// NewInstance provides a standalone instance of the game that can be
 	// run within a single game room's goroutine, concurrently with any
-	// other room goroutines running separate instances.
+	// other room goroutines running separate instances. MUST NOT RETURN
+	// NIL!
 	//
 	// If instances of a game need to talk to each other (which is highly
 	// unlikely and probably just a hack), they must use some global state
