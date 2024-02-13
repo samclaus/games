@@ -1,5 +1,7 @@
 package bravewength
 
+import "github.com/google/uuid"
+
 // This file contains types and serialization code needed for every type of event
 // *payload* the server can emit to players. Each of these payloads must be
 // serialized to JSON and prefixed with a header that says the type of the
@@ -7,16 +9,9 @@ package bravewength
 // client-to-server request code is, simply because there is not a clean way
 // for me to abstract it as much without hurting performance.
 
-type roomInfo struct {
-	RoomID uint32 `json:"room_id"`
-}
-
-// playerInfo represents the in-room state corresponding to a particular player, which
-// get associated with the player's client.
-type playerInfo struct {
-	Name string `json:"name"`
-	Role role   `json:"role"`
-}
+// TODO: optimized binary format and we definitely don't need to send the full
+// state (especially the potentially big player UUID->role mapping) every time
+// something happens
 
 type gameEventType byte
 
@@ -34,7 +29,8 @@ const (
 // simpler on the server, but clients can easily make use of, say,
 // TypeScript discriminated unions to make the events easier to work with.
 type gameEventInfo struct {
-	Src      playerInfo    `json:"src"`
+	Src      string        `json:"src"`
+	Role     role          `json:"role"`
 	Kind     gameEventType `json:"kind"`
 	Clue     string        `json:"clue"`
 	Word     string        `json:"word"`
@@ -42,12 +38,13 @@ type gameEventInfo struct {
 }
 
 type gameStateInfo struct {
-	Words       []string        `json:"words"`
-	DiscTypes   string          `json:"disc_types"`
-	FullTypes   string          `json:"full_types"`
-	CurrentTurn role            `json:"current_turn"`
-	CurrentClue string          `json:"current_clue"`
-	GameEnded   bool            `json:"game_ended"`
-	Winner      team            `json:"winner"`
-	Log         []gameEventInfo `json:"log"`
+	Roles       map[uuid.UUID]role `json:"roles"`
+	Words       []string           `json:"words"`
+	DiscTypes   string             `json:"disc_types"`
+	FullTypes   string             `json:"full_types"`
+	CurrentTurn role               `json:"current_turn"`
+	CurrentClue string             `json:"current_clue"`
+	GameEnded   bool               `json:"game_ended"`
+	Winner      team               `json:"winner"`
+	Log         []gameEventInfo    `json:"log"`
 }

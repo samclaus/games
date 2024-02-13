@@ -1,10 +1,11 @@
-package bravewength
+package games
 
 import (
 	"encoding/binary"
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -39,16 +40,42 @@ type client struct {
 	// We are "extending" a WebSocket connection
 	*websocket.Conn
 
-	// The room this connection belongs to
-	Room *room
+	id   uuid.UUID
+	name string
+	room *room       // The room this connection belongs to
+	send chan []byte // Buffered channel of outgoing messages
+}
 
-	// Buffered channel of outgoing messages
-	Send chan []byte
+// ID returns the UUIDv4 associated with the client. This is safe to call from
+// multiple goroutines because it never gets mutated after the client is
+// constructed. Note that technically multiple clients with the same ID might
+// be present in a room at once.
+func (c *client) ID() uuid.UUID {
+	return c.id
+}
+
+func (c *client) Name() string {
+	return c.name
+}
+
+// Send attempts to send a message to the client, kicking the client from the
+// room if the client's send channel is full/blocked. THIS IS ONLY SAFE TO CALL
+// FROM THE ROOM'S PROCESSING GOROUTINE!
+func (c *client) Send(msg []byte) {
+	select {
+	case c.send <- msg:
+	default:
+		// If this client's send channel, which uses a sizeable buffer,
+		// is blocked, it means this client is being way too slow to
+		// receive events and needs to be disconnected so we can reclaim
+		// resources (the game would literally be unplayable for the user)
+		c.room.removeMember(c)
+	}
 }
 
 func (c *client) readPump() {
 	defer func() {
-		c.Room.unregister <- c
+		c.room.unregister <- c
 		c.Close()
 	}()
 
@@ -67,12 +94,7 @@ func (c *client) readPump() {
 		if err != nil {
 			break
 		}
-		if req := decodeRequest(msg); req != nil {
-			c.Room.requests <- request{c, req}
-		} else {
-			// If a client is sending garbage messages, disconnect it
-			break
-		}
+		c.room.requests <- request{c, msg}
 	}
 }
 
@@ -86,7 +108,7 @@ func (c *client) writePump() {
 
 	for {
 		select {
-		case msg, chanStillOpen := <-c.Send:
+		case msg, chanStillOpen := <-c.send:
 			c.SetWriteDeadline(time.Now().Add(sendToClientWait))
 
 			// The room can decide to kill this connection by closing our send channel,
