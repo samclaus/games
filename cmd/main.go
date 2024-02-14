@@ -11,6 +11,6 @@ import (
 func main() {
 	http.ListenAndServe(":8080", games.NewServer(
 		websocket.Upgrader{},
-		bravewength.Game,
+		bravewength.Game(nil), // use default word deck
 	))
 }
