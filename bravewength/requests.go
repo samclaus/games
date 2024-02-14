@@ -42,204 +42,181 @@ const (
 // implements all turn-based game logic for Bravewength.
 //
 // TODO: tell room to disconnect client for sending invalid request structure?
-func (r *Bravewength) HandleRequest(src games.RoomMember, payload []byte) {
+func (g *gameState) HandleRequest(players []games.Client, src games.Client, payload []byte) {
 	if len(payload) == 0 {
 		return
 	}
 
 	body := payload[1:]
-	turn := r.currentTurn
+	turn := g.currentTurn
 	srcID := src.ID()
-	srcRole := r.roles[srcID]
+	srcRole := g.roles[srcID]
 
 	switch payload[0] {
 	case reqSetRole:
-		{
-			if len(body) != 1 || body[0] > 4 {
-				return
-			}
-
-			newRole := role(body[0])
-			isKnower := srcRole.IsKnower()
-			willBeKnower := newRole.IsKnower()
-
-			// If a game is in-progress, knowers may change teams but may not change to
-			// seekers or spectators because they have seen the card layout; we also do not
-			// want to issue state changes if nothing got changed
-			if newRole == srcRole || (!r.gameEnded && isKnower && !willBeKnower) {
-				return
-			}
-
-			// Spectator is the default role
-			if newRole == roleSpectator {
-				delete(r.roles, srcID)
-			} else {
-				// TODO: prevent map from growing too large if people keep connecting,
-				// setting role, and disconnecting
-				r.roles[srcID] = newRole
-			}
-
-			r.tryEmitOrKickUnresponsiveClient(req.origin, append(
-				[]byte("own-player-info\n"),
-				mustEncodeJSON(player)...,
-			))
-			r.broadcastPlayerState()
-
-			// If card visibility changed, we must send them freshly tailored game state
-			if isKnower != willBeKnower {
-				r.tryEmitOrKickUnresponsiveClient(
-					req.origin,
-					r.serializeFullGameStateEvent(willBeKnower),
-				)
-			}
-
+		if len(body) != 1 || body[0] > 4 {
 			return
 		}
+
+		newRole := role(body[0])
+		isKnower := srcRole.IsKnower()
+		willBeKnower := newRole.IsKnower()
+
+		// If a game is in-progress, knowers may change teams but may not change to
+		// seekers or spectators because they have seen the card layout; we also do not
+		// want to issue state changes if nothing got changed
+		if newRole == srcRole || (!g.gameEnded && isKnower && !willBeKnower) {
+			return
+		}
+
+		// Spectator is the default role
+		if newRole == roleSpectator {
+			delete(g.roles, srcID)
+		} else {
+			// TODO: prevent map from growing too large if people keep connecting,
+			// setting role, and disconnecting
+			g.roles[srcID] = newRole
+		}
+
+		g.broadcastRolesState(players)
+
+		// If card visibility changed, we must send them freshly tailored game state
+		if isKnower != willBeKnower {
+			src.Send(g.encodeBoardState(willBeKnower))
+		}
+
 	case reqNewGame:
-		{
-			r.newGame()
-			r.gameLog = append(r.gameLog, gameEventInfo{
+		g.newGame()
+		g.gameLog = append(g.gameLog, gameEventInfo{
+			Src:  srcID.String(),
+			Role: srcRole,
+			Kind: gameEventTypeGameStarted,
+		})
+		g.broadcastBoardState(players)
+
+	case reqEndGame:
+		// Cannot end game if no game is in-progress
+		if !g.gameEnded {
+			g.gameEnded = true
+			g.winner = teamNone
+			g.gameLog = append(g.gameLog, gameEventInfo{
 				Src:  srcID.String(),
 				Role: srcRole,
-				Kind: gameEventTypeGameStarted,
+				Kind: gameEventTypeGameEnded,
 			})
-			r.broadcastGameState()
-			return
+			g.broadcastBoardState(players)
 		}
-	case reqEndGame:
-		{
-			// Cannot end game if no game is in-progress
-			if !r.gameEnded {
-				r.gameEnded = true
-				r.winner = teamNone
-				r.gameLog = append(r.gameLog, gameEventInfo{
-					Src:  srcID.String(),
-					Role: srcRole,
-					Kind: gameEventTypeGameEnded,
-				})
-				r.broadcastGameState()
-			}
-			return
-		}
+
 	case reqRandomizeTeams:
 		// TODO
 	case reqGiveClue:
-		{
-			if len(body) == 0 {
-				return
-			}
-
-			// Cannot give a clue if:
-			// - The game is over
-			// - It is not the requester's turn
-			// - The requester is not a knower
-			if r.gameEnded || srcRole != turn || !srcRole.IsKnower() {
-				return
-			}
-
-			clue := string(body)
-
-			r.currentTurn = turn.NextTurn()
-			r.currentClue = clue
-			r.gameLog = append(r.gameLog, gameEventInfo{
-				Src:  srcID.String(),
-				Role: srcRole,
-				Kind: gameEventTypeClueGiven,
-				Clue: clue,
-			})
-			r.broadcastGameState()
-
+		if len(body) == 0 {
 			return
 		}
+
+		// Cannot give a clue if:
+		// - The game is over
+		// - It is not the requester's turn
+		// - The requester is not a knower
+		if g.gameEnded || srcRole != turn || !srcRole.IsKnower() {
+			return
+		}
+
+		clue := string(body)
+
+		g.currentTurn = turn.NextTurn()
+		g.currentClue = clue
+		g.gameLog = append(g.gameLog, gameEventInfo{
+			Src:  srcID.String(),
+			Role: srcRole,
+			Kind: gameEventTypeClueGiven,
+			Clue: clue,
+		})
+		g.broadcastBoardState(players)
+
 	case reqRevealCard:
-		{
-			if len(body) != 1 || body[0] >= boardSize {
-				return
-			}
-			cardIndex := body[0]
-
-			// Cannot reveal a card if:
-			// - The game is over
-			// - It is not the requester's turn
-			// - The requester is not a seeker
-			// - The card has already been revealed
-			if r.gameEnded ||
-				srcRole != turn ||
-				!srcRole.IsSeeker() ||
-				r.Board.DiscTypes[cardIndex] != cardTypeHidden {
-				return
-			}
-
-			revealedType := r.Board.FullTypes[cardIndex]
-			r.Board.DiscTypes[cardIndex] = revealedType
-
-			r.gameLog = append(r.gameLog, gameEventInfo{
-				Src:      srcID.String(),
-				Role:     srcRole,
-				Kind:     gameEventTypeCardRevealed,
-				Word:     r.Board.Words[cardIndex],
-				CardType: revealedType,
-			})
-
-			tealPlayer := srcRole == roleTealKnower || srcRole == roleTealSeeker
-
-			if revealedType == cardTypeBlack {
-				r.gameEnded = true
-
-				if tealPlayer {
-					r.winner = teamPurple
-				} else {
-					r.winner = teamTeal
-				}
-
-				r.gameLog = append(r.gameLog, gameEventInfo{
-					Src:  srcID.String(),
-					Role: srcRole,
-					Kind: gameEventTypeGameEnded,
-				})
-			} else if revealedType == cardTypeNeutral {
-				r.currentTurn = turn.NextTurn()
-			} else if winner := r.Board.winner(); winner != teamNone {
-				r.gameEnded = true
-				r.winner = winner
-				r.gameLog = append(r.gameLog, gameEventInfo{
-					Src:  srcID.String(),
-					Role: srcRole,
-					Kind: gameEventTypeGameEnded,
-				})
-			} else {
-				tealCard := revealedType == cardTypeTeal
-
-				if tealPlayer != tealCard {
-					r.currentTurn = turn.NextTurn()
-				}
-			}
-
-			r.broadcastGameState()
-
+		if len(body) != 1 || body[0] >= boardSize {
 			return
 		}
-	case reqEndTurn:
-		{
-			// Cannot end turn if:
-			// - The game is over
-			// - It is not the requester's turn
-			// - The requester is not a seeker
-			if r.gameEnded ||
-				srcRole != turn ||
-				!srcRole.IsSeeker() {
-				return
+		cardIndex := body[0]
+
+		// Cannot reveal a card if:
+		// - The game is over
+		// - It is not the requester's turn
+		// - The requester is not a seeker
+		// - The card has already been revealed
+		if g.gameEnded ||
+			srcRole != turn ||
+			!srcRole.IsSeeker() ||
+			g.Board.DiscTypes[cardIndex] != cardTypeHidden {
+			return
+		}
+
+		revealedType := g.Board.FullTypes[cardIndex]
+		g.Board.DiscTypes[cardIndex] = revealedType
+
+		g.gameLog = append(g.gameLog, gameEventInfo{
+			Src:      srcID.String(),
+			Role:     srcRole,
+			Kind:     gameEventTypeCardRevealed,
+			Word:     g.Board.Words[cardIndex],
+			CardType: revealedType,
+		})
+
+		tealPlayer := srcRole == roleTealKnower || srcRole == roleTealSeeker
+
+		if revealedType == cardTypeBlack {
+			g.gameEnded = true
+
+			if tealPlayer {
+				g.winner = teamPurple
+			} else {
+				g.winner = teamTeal
 			}
 
-			r.currentTurn = turn.NextTurn()
-			r.gameLog = append(r.gameLog, gameEventInfo{
+			g.gameLog = append(g.gameLog, gameEventInfo{
 				Src:  srcID.String(),
 				Role: srcRole,
-				Kind: gameEventTypeTurnEnded,
+				Kind: gameEventTypeGameEnded,
 			})
-			r.broadcastGameState()
+		} else if revealedType == cardTypeNeutral {
+			g.currentTurn = turn.NextTurn()
+		} else if winner := g.Board.winner(); winner != teamNone {
+			g.gameEnded = true
+			g.winner = winner
+			g.gameLog = append(g.gameLog, gameEventInfo{
+				Src:  srcID.String(),
+				Role: srcRole,
+				Kind: gameEventTypeGameEnded,
+			})
+		} else {
+			tealCard := revealedType == cardTypeTeal
 
+			if tealPlayer != tealCard {
+				g.currentTurn = turn.NextTurn()
+			}
+		}
+
+		g.broadcastBoardState(players)
+
+	case reqEndTurn:
+		// Cannot end turn if:
+		// - The game is over
+		// - It is not the requester's turn
+		// - The requester is not a seeker
+		if g.gameEnded ||
+			srcRole != turn ||
+			!srcRole.IsSeeker() {
 			return
 		}
+
+		g.currentTurn = turn.NextTurn()
+		g.gameLog = append(g.gameLog, gameEventInfo{
+			Src:  srcID.String(),
+			Role: srcRole,
+			Kind: gameEventTypeTurnEnded,
+		})
+		g.broadcastBoardState(players)
+
 	}
 }

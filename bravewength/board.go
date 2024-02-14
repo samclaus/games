@@ -4,6 +4,10 @@ import "math/rand"
 
 type cardType byte
 
+func (ct cardType) ascii() byte {
+	return byte(ct + 48)
+}
+
 const boardSize = 25
 const (
 	cardTypeNeutral cardType = iota

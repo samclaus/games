@@ -13,6 +13,11 @@ import "github.com/google/uuid"
 // state (especially the potentially big player UUID->role mapping) every time
 // something happens
 
+const (
+	stateBoard byte = iota
+	stateRoles
+)
+
 type gameEventType byte
 
 const (
@@ -37,7 +42,7 @@ type gameEventInfo struct {
 	CardType cardType      `json:"card_type"`
 }
 
-type gameStateInfo struct {
+type boardStateBody struct {
 	Roles       map[uuid.UUID]role `json:"roles"`
 	Words       []string           `json:"words"`
 	DiscTypes   string             `json:"disc_types"`
