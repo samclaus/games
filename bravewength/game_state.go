@@ -37,51 +37,8 @@ func (g *gameState) newGame() {
 	g.gameLog = make([]gameEventInfo, 0, 10)
 }
 
-func (g *gameState) encodeBoardState(showFullLayout bool) []byte {
-	var discTypesASCII [boardSize]byte
-
-	for i, ct := range g.Board.DiscTypes {
-		discTypesASCII[i] = ct.ascii()
-	}
-
-	var fullTypesASCII string
-
-	if showFullLayout || g.gameEnded {
-		var ascii [boardSize]byte
-
-		for i, ct := range g.Board.FullTypes {
-			ascii[i] = ct.ascii()
-		}
-
-		fullTypesASCII = string(ascii[:])
-	} else {
-		// All hidden
-		fullTypesASCII = "4444444444444444444444444"
-	}
-
-	body := mustEncodeJSON(
-		boardStateBody{
-			Words:       g.Board.Words[:],
-			DiscTypes:   string(discTypesASCII[:]),
-			FullTypes:   fullTypesASCII,
-			CurrentTurn: g.currentTurn,
-			CurrentClue: g.currentClue,
-			GameEnded:   g.gameEnded,
-			Winner:      g.winner,
-			Log:         g.gameLog,
-		},
-	)
-
-	return append(
-		append(games.AllocGameMessage(1+len(body)), stateBoard),
-		body...,
-	)
-}
-
 func (g *gameState) broadcastRolesState(players []games.Client) {
-	body := mustEncodeJSON(g.roles)
-	msg := append(games.AllocGameMessage(1+len(body)), stateRoles)
-	msg = append(msg, body...)
+	msg := g.encodeRolesState()
 
 	for _, p := range players {
 		p.Send(msg)

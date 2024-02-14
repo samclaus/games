@@ -1,13 +1,12 @@
 package bravewength
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+	"github.com/samclaus/games"
+)
 
-// This file contains types and serialization code needed for every type of event
-// *payload* the server can emit to players. Each of these payloads must be
-// serialized to JSON and prefixed with a header that says the type of the
-// event. This code is more tightly coupled to the room code than the
-// client-to-server request code is, simply because there is not a clean way
-// for me to abstract it as much without hurting performance.
+// This file contains constants and serialization code for every kind of
+// message a room will send to clients to update their state.
 
 // TODO: optimized binary format and we definitely don't need to send the full
 // state (especially the potentially big player UUID->role mapping) every time
@@ -52,4 +51,51 @@ type boardStateBody struct {
 	GameEnded   bool               `json:"game_ended"`
 	Winner      team               `json:"winner"`
 	Log         []gameEventInfo    `json:"log"`
+}
+
+func (g *gameState) encodeBoardState(showFullLayout bool) []byte {
+	var discTypesASCII [boardSize]byte
+
+	for i, ct := range g.Board.DiscTypes {
+		discTypesASCII[i] = ct.ascii()
+	}
+
+	var fullTypesASCII string
+
+	if showFullLayout || g.gameEnded {
+		var ascii [boardSize]byte
+
+		for i, ct := range g.Board.FullTypes {
+			ascii[i] = ct.ascii()
+		}
+
+		fullTypesASCII = string(ascii[:])
+	} else {
+		// All hidden
+		fullTypesASCII = "4444444444444444444444444"
+	}
+
+	body := mustEncodeJSON(
+		boardStateBody{
+			Words:       g.Board.Words[:],
+			DiscTypes:   string(discTypesASCII[:]),
+			FullTypes:   fullTypesASCII,
+			CurrentTurn: g.currentTurn,
+			CurrentClue: g.currentClue,
+			GameEnded:   g.gameEnded,
+			Winner:      g.winner,
+			Log:         g.gameLog,
+		},
+	)
+
+	return append(
+		append(games.AllocGameMessage(1+len(body)), stateBoard),
+		body...,
+	)
+}
+
+func (g *gameState) encodeRolesState() []byte {
+	body := mustEncodeJSON(g.roles)
+	msg := append(games.AllocGameMessage(1+len(body)), stateRoles)
+	return append(msg, body...)
 }
