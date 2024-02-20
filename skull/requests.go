@@ -244,7 +244,36 @@ func (g *gameState) HandleRequest(players []games.Client, src games.Client, payl
 
 		// TODO: broadcast state update
 
-	case reqMoveCard: // TODO
+	case reqMoveCard:
+		_, hand := g.getHand(srcID)
+
+		// Ignore request if:
+		// 1. There is not a game in progress
+		// 2. Requester doesn't own a hand in the game
+		// 3. They did not provide 2 card indices (invalid request)
+		// 4. They provided the same hand index twice (invalid request)
+		// 5. They provided an invalid hand index (too high)
+		if !g.phase.Active() ||
+			hand == nil ||
+			len(body) != 2 ||
+			body[0] == body[1] ||
+			body[0] >= hand.hcards || body[1] >= hand.hcards {
+			return
+		}
+
+		// Moving skull?
+		if hand.skullStatus == skullInHand {
+			if body[0] == hand.skullPos {
+				hand.skullPos = body[1]
+			} else if body[1] == hand.skullPos {
+				hand.skullPos = body[0]
+			}
+		}
+
+		// TODO: how to track/broadcast card positions? Important for life-like gameplay
+
+		// TODO: broadcast state update
+
 	case reqDoneShuffling:
 		// Ignore request if:
 		// 1. Game is not in pick phase (early return to avoid linear search for hand)
