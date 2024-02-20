@@ -16,6 +16,9 @@ const (
 	reqBid
 	reqPass
 	reqPick
+	reqMoveCard
+	reqDoneShuffling
+	reqTakeCard
 )
 
 // HandleRequest is required to satisfy the (github.com/samclaus/games).GameState interface and
@@ -94,6 +97,8 @@ func (g *gameState) HandleRequest(players []games.Client, src games.Client, payl
 	case reqRestartGame:
 		g.phase = phasePlay
 		g.turn = 0
+		g.bid = 0
+		g.passed = 0
 		g.lockInPlayers()
 
 		// TODO: broadcast new game state
@@ -178,12 +183,13 @@ func (g *gameState) HandleRequest(players []games.Client, src games.Client, payl
 		// successfully pick the number of cards they bid!
 		if g.turn == g.bidder {
 			g.phase = phasePick
+			g.passed = 0
 		}
 
 		// TODO: broadcast state update
 
 	case reqPick:
-		pos, _ := g.getHand(srcID)
+		pos, hand := g.getHand(srcID)
 
 		// Ignore request if:
 		// 1. Game is not in pick phase
@@ -197,20 +203,91 @@ func (g *gameState) HandleRequest(players []games.Client, src games.Client, payl
 			return
 		}
 
-		pickedHand := g.hands[body[0]]
+		pickedHandIdx := body[0]
+		pickedHand := &g.hands[pickedHandIdx]
 
 		if pickedHand.pcards == 0 {
 			return
 		}
 
-		if pickedHand.skullStatus == skullPlayed &&
-			pickedHand.skullPos == (pickedHand.pcards-1) {
-			// TODO: they just picked someone's skull
-		}
+		// Decrement first to make skull index check below easier
+		pickedHand.pcards--
 
-		// TODO
+		if pickedHand.skullStatus == skullPlayed &&
+			pickedHand.skullPos == pickedHand.pcards {
+			// They picked someone's skull, so after they finish shuffling
+			// their cards, that player gets to take one of their cards
+			g.phase = phaseBidderShuffle
+			g.bid = 0 // reset bid counter
+			g.taker = pickedHandIdx
+			g.reclaimPlayedCards()
+		} else {
+			// Rather than increment a separate score variable and compare it
+			// to their bid, we just decrement the bid and they try to get it
+			// to reach zero, i.e., it represents "remaining cards" they must pick
+			g.bid--
+
+			if g.bid == 0 {
+				// They won their bid
+				hand.score++
+
+				if hand.score > 1 {
+					// They won the game!
+					g.phase = phaseWinner
+					g.winner = srcID
+				} else {
+					g.phase = phasePlay // bidder will play first, no need to update turn
+					g.reclaimPlayedCards()
+				}
+			}
+		}
 
 		// TODO: broadcast state update
 
+	case reqMoveCard: // TODO
+	case reqDoneShuffling:
+		// Ignore request if:
+		// 1. Game is not in pick phase (early return to avoid linear search for hand)
+		// 2. It is not their turn (also handles -1 position case meaning they don't have a hand)
+		if g.phase != phaseBidderShuffle {
+			return
+		}
+		if pos, _ := g.getHand(srcID); g.turn != pos {
+			return
+		}
+
+		g.phase = phaseTakeCard
+		g.turn = int(g.taker)
+
+		// TODO: broadcast state
+
+	case reqTakeCard:
+		pos, _ := g.getHand(srcID)
+		bidder := &g.hands[g.bidder]
+
+		// Ignore request if:
+		// 1. Game is not in take card phase
+		// 2. It is not their turn (also handles -1 position case meaning they don't have a hand)
+		// 3. They did not provide a hand index to take a card from (invalid request)
+		// 4. They provided an invalid hand index (too high)
+		if g.phase != phaseTakeCard ||
+			g.turn != pos ||
+			len(body) != 1 ||
+			body[0] >= bidder.hcards {
+			return
+		}
+
+		cardIdx := body[0]
+
+		if cardIdx == bidder.skullPos {
+			bidder.skullStatus = skullGone
+		} else if cardIdx < bidder.skullPos && bidder.skullStatus == skullInHand {
+			bidder.skullPos--
+		}
+
+		bidder.hcards--
+		g.phase = phasePlay // NOTE: no need to change turn because taker goes first now
+
+		// TODO: broadcast state
 	}
 }

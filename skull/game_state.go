@@ -1,69 +1,41 @@
 package skull
 
 import (
-	"math/rand"
-
 	"github.com/google/uuid"
 	"github.com/samclaus/games"
 )
 
+// Must not exceed 16 because we use uint16 bitset to flag players who "passed" a bid
+const maxPlayers = 6
+
 type gamePhase uint
 
 const (
-	phaseNoGame gamePhase = iota
-	phasePlay
-	phaseBid
-	phasePick
-	phaseWinner
-	phaseAborted
+	// NOTE: careful when changing order, some code uses <> comparisons
+	phaseNoGame        gamePhase = iota // Fresh game lobby, have not played yet
+	phaseWinner                         // Game was played and someone won
+	phaseAborted                        // Game was aborted without a winner
+	phasePlay                           // Go around circle, playing cards until someone bids
+	phaseBid                            // Go around circle until someone WINS the bid
+	phasePick                           // Someone won bid, now they try to pick that many roses
+	phaseBidderShuffle                  // Bidder picked skull, allow them to shuffle before they get a card taken
+	phaseTakeCard                       // Bidder failed, ended shuffling phase, now skull player gets to take a card from them
 )
 
 func (p gamePhase) Active() bool {
-	return p == phasePlay || p == phaseBid || p == phasePick
-}
-
-type handStatus uint
-
-const (
-	statusUnclaimed handStatus = iota
-	statusClaimed
-	statusLeft
-)
-
-type skullStatus uint8
-
-const (
-	skullInHand skullStatus = iota
-	skullPlayed
-	skullGone
-)
-
-type hand struct {
-	status      handStatus
-	id          uuid.UUID   // ID of the client that owns this hand
-	hcards      uint8       // num held cards (including skull if it is not played)
-	pcards      uint8       // num played cards (including skull if it is played)
-	skullStatus skullStatus // skull in hand, played in stack of cards, or taken by another player?
-	skullPos    uint8       // position of skull in hand or played stack; invalid if skull gone
-	score       uint8       // num successful bids, 2 wins the game
+	return p > phaseAborted
 }
 
 type gameState struct {
-	hands    [6]hand
+	hands    [maxPlayers]hand
 	phase    gamePhase
 	nplayers int
 	turn     int
 	bid      uint8
 	bidder   int
+	passed   uint16
+	taker    uint8
 	winner   uuid.UUID // only valid if game complete
-}
-
-func (h *hand) resetCardsAndScore() {
-	h.hcards = 4
-	h.pcards = 0
-	h.skullStatus = skullInHand
-	h.skullPos = uint8(rand.Intn(4))
-	h.score = 0
 }
 
 // Shifts all claimed hands to the left of the array, marks any
@@ -86,27 +58,6 @@ func (g *gameState) lockInPlayers() {
 	}
 }
 
-func (g *gameState) nextTurn() {
-	// During, say, *play* phase, we ignore their played cards and only players
-	// who have HELD cards still can do anything; during bidding phase, you only
-	// need to have some cards somewhere, i.e., not eliminated by getting all
-	// your cards taking due to failed bid/picks
-	pcardMult := uint8(0)
-	if g.phase == phaseBid {
-		pcardMult = 1
-	}
-
-	// Find next player who can still play, which depends on their hand AND the
-	// phase of the game
-	for i := 0; i < g.nplayers; i++ {
-		g.turn = (g.turn + 1) % g.nplayers
-
-		if (g.hands[g.turn].hcards + g.hands[g.turn].pcards*pcardMult) > 0 {
-			break
-		}
-	}
-}
-
 func (g *gameState) getHand(clientID uuid.UUID) (int, *hand) {
 	for i := range g.hands {
 		if g.hands[i].status == statusClaimed && g.hands[i].id == clientID {
@@ -114,6 +65,29 @@ func (g *gameState) getHand(clientID uuid.UUID) (int, *hand) {
 		}
 	}
 	return -1, nil
+}
+
+// Finds the next player, in order (and handling loop-around), who still has
+// at least one card, which could be held or played. I.e., ignores players
+// who have been eliminated by losing all of their cards.
+func (g *gameState) nextTurn() {
+	for i := 0; i < g.nplayers; i++ {
+		g.turn = (g.turn + 1) % g.nplayers
+
+		// TODO: can I refactor this somehow so that it's not always running
+		// the bidding phase logic where it needs to skip over players who
+		// have already chosen to pass up the bid
+		if (g.phase != phaseBid || (1<<g.turn)&g.passed == 0) &&
+			g.hands[g.turn].hasCards() {
+			break
+		}
+	}
+}
+
+func (g *gameState) reclaimPlayedCards() {
+	for i := 0; i < g.nplayers; i++ {
+		g.hands[i].reclaimPlayedCards()
+	}
 }
 
 func (g *gameState) broadcastState(players []games.Client) {
