@@ -28,14 +28,15 @@ func (p gamePhase) Active() bool {
 
 type gameState struct {
 	hands    [maxPlayers]hand
-	phase    gamePhase
-	nplayers int
-	turn     int
-	bid      uint8
-	bidder   int
-	passed   uint16
-	taker    uint8
-	winner   uuid.UUID // only valid if game complete
+	phase    gamePhase // currently playing cards? bidding? attempting to pick cards for bid?
+	nplayers int       // how many players are there (from left; other hands unclaimed)
+	turn     int       // index of hand/player whose turn it is
+	pcards   uint8     // total cards played, for validating bid amounts
+	bid      uint8     // current bid
+	bidder   int       // index of last hand/player who raised the bid
+	passed   uint16    // bitset of hand/player indices that passed and cannot bid this time
+	taker    uint8     // index of hand/player whose skull got picked by bidder; takes card from bidder
+	winner   uuid.UUID // ID of client that won game; only valid for phaseWinner
 }
 
 // Shifts all claimed hands to the left of the array, marks any
@@ -85,6 +86,8 @@ func (g *gameState) nextTurn() {
 }
 
 func (g *gameState) reclaimPlayedCards() {
+	g.pcards = 0
+
 	for i := 0; i < g.nplayers; i++ {
 		g.hands[i].reclaimPlayedCards()
 	}

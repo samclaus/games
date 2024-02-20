@@ -97,6 +97,7 @@ func (g *gameState) HandleRequest(players []games.Client, src games.Client, payl
 	case reqRestartGame:
 		g.phase = phasePlay
 		g.turn = 0
+		g.pcards = 0
 		g.bid = 0
 		g.passed = 0
 		g.lockInPlayers()
@@ -140,6 +141,7 @@ func (g *gameState) HandleRequest(players []games.Client, src games.Client, payl
 		hand.pcards++
 		hand.hcards--
 
+		g.pcards++
 		g.nextTurn()
 
 		// TODO: broadcast new game state
@@ -152,17 +154,26 @@ func (g *gameState) HandleRequest(players []games.Client, src games.Client, payl
 		// 2. It is not their turn (also handles -1 position case meaning they don't have a hand)
 		// 3. They did not provide a bid (invalid request)
 		// 4. They did not bid higher than current bid (also handles case where they start bidding)
+		// 5. They tried to bid more cards than have been played
 		if !(g.phase == phasePlay || g.phase == phaseBid) ||
 			g.turn != pos ||
 			len(body) != 1 ||
-			body[0] <= g.bid {
+			body[0] <= g.bid ||
+			body[0] > g.pcards {
 			return
 		}
 
-		g.phase = phaseBid // in case they are starting the bid
 		g.bid = body[0]
 		g.bidder = pos
-		g.nextTurn()
+
+		if g.bid < g.pcards {
+			g.phase = phaseBid // in case they are starting the bid
+			g.nextTurn()
+		} else {
+			// No one can bid higher, jump right to pick phase
+			g.phase = phasePick
+			g.passed = 0
+		}
 
 		// TODO: broadcast state update
 
