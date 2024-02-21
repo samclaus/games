@@ -32,7 +32,8 @@ type request struct {
 type room struct {
 	gameRegistry map[string]Game
 
-	ID uint32
+	ID   uint32
+	Name string
 
 	members []Client
 

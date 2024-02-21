@@ -5,8 +5,11 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
+
+const idCookieName = "id"
 
 type server struct {
 	upgrader websocket.Upgrader
@@ -24,17 +27,45 @@ type server struct {
 // serve the connection in another goroutine until the client closes the WebSocket or
 // an error occurs.
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var clientID uuid.UUID
+
+	if ck, err := r.Cookie(idCookieName); err != nil {
+		clientID = uuid.New()
+		http.SetCookie(w, &http.Cookie{
+			Name:     idCookieName,
+			Value:    clientID.String(),
+			SameSite: http.SameSiteStrictMode,
+			Secure:   true,
+		})
+	} else if clientID, err = uuid.Parse(ck.Value); err != nil {
+		http.Error(w, "Invalid client ID cookie", http.StatusBadRequest)
+		return
+	}
+
 	roomCode := r.URL.Query().Get("room")
 	newRoom := roomCode == "new"
+	playerName := r.URL.Query().Get("name")
+
+	if playerName == "" {
+		http.Error(w, "Must specify a player name with 'name' URL query parameter", http.StatusBadRequest)
+		return
+	}
 
 	var rm *room
 
 	if newRoom {
+		roomName := r.URL.Query().Get("room-name")
+		if roomName == "" {
+			http.Error(w, "Must specify a name for the room with 'room-name' URL query parameter", http.StatusBadRequest)
+			return
+		}
+
 		s.roomsMtx.Lock()
 
 		rm = &room{
 			gameRegistry: s.games,
 			ID:           s.roomCtr,
+			Name:         roomName,
 			members:      make([]Client, 0, 15), // TODO: enforce max 15 members
 			register:     make(chan *client),
 			unregister:   make(chan *client),
@@ -81,7 +112,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cli := &client{Conn: conn, room: rm, send: make(chan []byte, 100)}
+	cli := &client{conn, clientID, playerName, rm, make(chan []byte, 100)}
 	rm.register <- cli
 
 	// Start read/write in new goroutine so we can return from this HTTP handler and let the
