@@ -19,8 +19,8 @@ type Client interface {
 	// ID returns the UUID of the user the connection is associated with and is
 	// safe to call from any number of goroutines because it does not change.
 	ID() uuid.UUID
-	// Name returns the name associated with the client. This method is ONLY
-	// safe to call from the a room's processing goroutine.
+	// Name returns the name associated with the client and is safe to call from
+	// any number of goroutines because it does not change.
 	Name() string
 	// Send attempts to write a message to the WebSocket connection, potentially
 	// kicking the player or taking other measures behind the scene if the

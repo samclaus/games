@@ -63,7 +63,7 @@ func (r *room) broadcast(msg []byte) {
 
 func (r *room) broadcastAllMembersState() {
 	if len(r.members) > 0 {
-		r.broadcast(encodeAllMembersState(r.members))
+		r.broadcast(encodeSetMembersState(r.members))
 	}
 }
 
