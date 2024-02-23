@@ -113,7 +113,7 @@ func (r *room) processEventsUntilClosed() {
 			r.debug("Registering client [ID: %s, Name: %q]", c.id.String(), c.name)
 
 			// NOTE: this is the first time anything will be pushed on the new client's send
-			// channel, so the '<-' operation below literally cannot fail (channel is buffered)
+			// channel, so the '<-' operations below literally cannot fail (channel is buffered)
 			c.send <- encodeConnectionState(r.ID, c.id)
 			c.send <- encodeAllChatMessagesState(r.chat)
 			r.members = append(r.members, c)

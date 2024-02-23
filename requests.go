@@ -1,8 +1,7 @@
 package games
 
 const (
-	reqSetName byte = iota
-	reqBootGame
+	reqBootGame byte = iota
 	reqKillGame
 	reqMessageChat
 )
@@ -30,11 +29,6 @@ func (r *room) handleRequest(req request) {
 	body := req.msg[2:]
 
 	switch req.msg[1] {
-	case reqSetName:
-		// TODO: block duplicate names?
-		req.src.name = string(body)
-		r.broadcast(encodeSetMemberState(req.src.id, body))
-
 	case reqBootGame:
 		if r.currentGame != nil || len(body) == 0 {
 			return
