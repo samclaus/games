@@ -123,7 +123,7 @@ func (c *client) writePump() {
 				return
 			}
 
-			if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
+			if err := c.WriteMessage(websocket.BinaryMessage, msg); err != nil {
 				return
 			}
 		case <-pingTicker.C:
