@@ -1,6 +1,7 @@
 package games
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"sync"
@@ -19,14 +20,36 @@ type server struct {
 	roomsMtx sync.RWMutex
 }
 
-// ServeHTTP is Server's only public method. First, it expects a "room" query
-// parameter on the given HTTP request, which should either correspond to an existing
-// room or have the special value "new" (otherwise an error response will be sent).
-// If the room is successfully found/created, the request's underlying TCP connection
-// will be upgraded to a WebSocket and it will be handed off to the room, which will
-// serve the connection in another goroutine until the client closes the WebSocket or
-// an error occurs.
-func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// HandleGetRooms performs no authentication and responds with a single JSON object
+// mapping room IDs to their names.
+func (s *server) HandleGetRooms(w http.ResponseWriter, r *http.Request) {
+	debug("Got list rooms request")
+
+	res := make(map[uint32]string)
+
+	s.roomsMtx.RLock()
+
+	for _, rm := range s.rooms {
+		res[rm.ID] = rm.Name
+	}
+
+	s.roomsMtx.RUnlock()
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(res)
+}
+
+// HandleConnect attempts to connect the client to a room, establishing a WebSocket
+// connection. Expects the following URL query parameters:
+//
+// - "name": initial name for the player, which they can edit later
+// - "room": room ID or "new" if creating a new room
+// - "room-name": name for the room, only expected/relevant if creating new room
+func (s *server) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
+	debug("Got join room request")
+
 	var clientID uuid.UUID
 
 	if ck, err := r.Cookie(idCookieName); err != nil {
@@ -37,9 +60,13 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			SameSite: http.SameSiteStrictMode,
 			Secure:   true,
 		})
+		debug("Set client ID cookie: %q", clientID.String())
 	} else if clientID, err = uuid.Parse(ck.Value); err != nil {
+		debug("Got INVALID client ID cookie: %q", ck.Value)
 		http.Error(w, "Invalid client ID cookie", http.StatusBadRequest)
 		return
+	} else {
+		debug("Got client ID cookie: %q", clientID.String())
 	}
 
 	roomCode := r.URL.Query().Get("room")
@@ -47,6 +74,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	playerName := r.URL.Query().Get("name")
 
 	if playerName == "" {
+		debug("Client did not provide initial player name")
 		http.Error(w, "Must specify a player name with 'name' URL query parameter", http.StatusBadRequest)
 		return
 	}
@@ -56,6 +84,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if newRoom {
 		roomName := r.URL.Query().Get("room-name")
 		if roomName == "" {
+			debug("Client did not provide room name")
 			http.Error(w, "Must specify a name for the room with 'room-name' URL query parameter", http.StatusBadRequest)
 			return
 		}

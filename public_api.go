@@ -7,6 +7,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type Server interface {
+	HandleGetRooms(http.ResponseWriter, *http.Request)
+	HandleJoinRoom(http.ResponseWriter, *http.Request)
+}
+
 // Client corresponds to a single WebSocket connection. UUIDs are used for very
 // barebones identity management, so that if a player disconnects, they can
 // reconnect as the "same person".
@@ -86,7 +91,7 @@ func AllocGameMessage(cap int) []byte {
 	return append(make([]byte, 0, 1+cap), scopeGame)
 }
 
-func NewServer(u websocket.Upgrader, games ...Game) http.Handler {
+func NewServer(u websocket.Upgrader, games ...Game) Server {
 	gamesByID := make(map[string]Game)
 	for _, g := range games {
 		gamesByID[g.ID()] = g
