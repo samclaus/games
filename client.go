@@ -2,7 +2,6 @@ package games
 
 import (
 	"encoding/binary"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -80,7 +79,7 @@ func (c *Client) readPump() {
 	c.conn.SetPongHandler(func(timestamp string) error {
 		then := int64(binary.BigEndian.Uint64([]byte(timestamp)))
 		now := time.Now()
-		fmt.Printf("Ping is %dms\n", now.UnixMilli()-then)
+		debug("Ping is %dms\n", now.UnixMilli()-then)
 		c.conn.SetReadDeadline(now.Add(pongWait))
 		return nil
 	})
