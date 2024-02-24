@@ -13,7 +13,7 @@ const (
 	roomStateConnection      byte = iota // 4-byte room ID (big endian uint32) then 16-byte UUID
 	roomStateSetMembers                  // emits 0 or more member UUID/name pairs
 	roomStateDeleteMembers               // emits 0 or more member UUIDs that disconnected
-	roomStateAllChatMessages             // uint16 length of message history, followed by still available messages (each is 16-byte client UUID, 1-byte message length - 1, <message length>-byte contents)
+	roomStateAllChatMessages             // uint16 length of message history, followed by still available messages (each is 16-byte client UUID, 1-byte message length, <message length>-byte contents)
 	roomStateNewChatMessage              // 16-byte client UUID, then rest is message contents
 	roomStateCurrentGame                 // emits UTF-8 encoded game ID, which may be empty (0 bytes)
 )

@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	maxScrollback = 50
-	maxMessageLen = 100                    // must be 256 or less because we only use 1 byte for message length (and message length cannot be 0)
+	maxScrollback = 50                     // must be 255 or less because we only use 1 byte for message count
+	maxMessageLen = 100                    // must be 255 or less because we only use 1 byte for message length
 	lineLen       = 16 + 1 + maxMessageLen // 16-byte client UUID, message length, message capacity
 )
 
@@ -24,7 +24,7 @@ func (cb *chatBuffer) addMessage(clientID uuid.UUID, msg []byte) bool {
 
 	pos := (cb.hist % maxScrollback) * lineLen
 	copy(cb.buff[pos:pos+16], clientID[:])
-	cb.buff[pos+16] = byte(len(msg) - 1)
+	cb.buff[pos+16] = byte(len(msg))
 	copy(cb.buff[pos+17:pos+17+uint16(len(msg))], msg)
 	cb.hist++
 
@@ -46,7 +46,7 @@ func (cb *chatBuffer) encodedHistoryLen() int {
 	encLen := 2 + numMessages*(16+1)
 
 	for i := 0; i < numMessages; i++ {
-		encLen += int(cb.buff[i*lineLen+16] + 1)
+		encLen += int(cb.buff[i*lineLen+16])
 	}
 
 	return encLen
@@ -60,11 +60,11 @@ func (cb *chatBuffer) appendHistory(dst []byte) []byte {
 	// Start from the current offset
 	for i := currentLine; i < maxScrollback; i++ {
 		pos := i * lineLen
-		msgLenMinus1 := cb.buff[pos+16]
+		msgLen := cb.buff[pos+16]
 
-		dst = append(dst, cb.buff[pos:pos+16]...)                        // client UUID
-		dst = append(dst, msgLenMinus1)                                  // message length - 1
-		dst = append(dst, cb.buff[pos+17:pos+17+int(msgLenMinus1+1)]...) // message contents
+		dst = append(dst, cb.buff[pos:pos+16]...)                // client UUID
+		dst = append(dst, msgLen)                                // message length
+		dst = append(dst, cb.buff[pos+17:pos+17+int(msgLen)]...) // message contents
 	}
 
 	// In case we have more than <maxScrollback> messages, we need to start
@@ -72,11 +72,11 @@ func (cb *chatBuffer) appendHistory(dst []byte) []byte {
 	// the newest messages
 	for i := 0; i < currentLine; i++ {
 		pos := i * lineLen
-		msgLenMinus1 := cb.buff[pos+16]
+		msgLen := cb.buff[pos+16]
 
-		dst = append(dst, cb.buff[pos:pos+16]...)                        // client UUID
-		dst = append(dst, msgLenMinus1)                                  // message length - 1
-		dst = append(dst, cb.buff[pos+17:pos+17+int(msgLenMinus1+1)]...) // message contents
+		dst = append(dst, cb.buff[pos:pos+16]...)                // client UUID
+		dst = append(dst, msgLen)                                // message length
+		dst = append(dst, cb.buff[pos+17:pos+17+int(msgLen)]...) // message contents
 	}
 
 	return dst
