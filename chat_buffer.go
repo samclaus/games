@@ -17,6 +17,13 @@ type chatBuffer struct {
 	hist uint16
 }
 
+func (cb *chatBuffer) numMessages() int {
+	if cb.hist > maxScrollback {
+		return maxScrollback
+	}
+	return int(cb.hist)
+}
+
 func (cb *chatBuffer) addMessage(clientID uuid.UUID, msg []byte) bool {
 	if len(msg) < 1 || len(msg) > maxMessageLen {
 		return false
@@ -34,12 +41,7 @@ func (cb *chatBuffer) addMessage(clientID uuid.UUID, msg []byte) bool {
 // Calculate size of encoded history (number of bytes required) up-front to
 // avoid wasteful memory allocations due to automatic slice growth
 func (cb *chatBuffer) encodedHistoryLen() int {
-	var numMessages int
-	if cb.hist > maxScrollback {
-		numMessages = maxScrollback
-	} else {
-		numMessages = int(cb.hist)
-	}
+	numMessages := cb.numMessages()
 
 	// 2 bytes for uint16 length of message HISTORY (not scrollback) +
 	// <number of retained messages> * (16 bytes for client UUID + 1 byte for message length)
@@ -56,9 +58,10 @@ func (cb *chatBuffer) appendHistory(dst []byte) []byte {
 	dst = binary.BigEndian.AppendUint16(dst, cb.hist)
 
 	currentLine := int(cb.hist % maxScrollback)
+	numMessages := cb.numMessages()
 
 	// Start from the current offset
-	for i := currentLine; i < maxScrollback; i++ {
+	for i := currentLine; i < numMessages; i++ {
 		pos := i * lineLen
 		msgLen := cb.buff[pos+16]
 

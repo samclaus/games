@@ -59,7 +59,10 @@ type Client struct {
 func (c *Client) Send(msg []byte) {
 	select {
 	case c.send <- msg:
+		c.room.debug("Sent %d bytes to %q", len(msg), c.Name)
 	default:
+		c.room.debug("Send channel blocked for %q", c.Name)
+
 		// If this client's send channel, which uses a sizeable buffer,
 		// is blocked, it means this client is being way too slow to
 		// receive events and needs to be disconnected so we can reclaim
@@ -119,8 +122,11 @@ func (c *Client) writePump() {
 			}
 
 			if err := c.conn.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+				debug("Failed to write %d bytes to %q: %v", len(msg), c.Name, err)
 				return
 			}
+
+			debug("Wrote %d bytes to %q", len(msg), c.Name)
 		case <-pingTicker.C:
 			now := time.Now()
 
