@@ -10,7 +10,7 @@ import (
 // message a room will send to clients to update their state.
 
 const (
-	roomStateConnection      byte = iota // 4-byte room ID (big endian uint32) then 16-byte UUID
+	roomStateConnection      byte = iota // 4-byte room ID (big endian uint32) then 16-byte client UUID, rest is room name
 	roomStateSetMembers                  // emits 0 or more member UUID/name pairs
 	roomStateDeleteMembers               // emits 0 or more member UUIDs that disconnected
 	roomStateAllChatMessages             // uint16 length of message history, followed by still available messages (each is 16-byte client UUID, 1-byte message length, <message length>-byte contents)
@@ -18,11 +18,12 @@ const (
 	roomStateCurrentGame                 // emits UTF-8 encoded game ID, which may be empty (0 bytes)
 )
 
-func encodeConnectionState(roomID uint32, clientID uuid.UUID) []byte {
-	msg := make([]byte, 0, 2+4+16)
+func encodeConnectionState(r *room, clientID uuid.UUID) []byte {
+	msg := make([]byte, 0, 2+4+16+len(r.Name))
 	msg = append(msg, scopeRoom, roomStateConnection)
-	msg = binary.BigEndian.AppendUint32(msg, roomID)
-	return append(msg, clientID[:]...)
+	msg = binary.BigEndian.AppendUint32(msg, r.ID)
+	msg = append(msg, clientID[:]...)
+	return append(msg, r.Name...)
 }
 
 func encodeSetMembersState(members []*Client) []byte {
