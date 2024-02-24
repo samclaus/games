@@ -25,13 +25,13 @@ const (
 // implements all turn-based game logic for Skull.
 //
 // TODO: tell room to disconnect client for sending invalid request structure?
-func (g *gameState) HandleRequest(players []games.Client, src games.Client, payload []byte) {
+func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, payload []byte) {
 	if len(payload) == 0 {
 		return
 	}
 
 	body := payload[1:]
-	srcID := src.ID()
+	srcID := src.ID
 
 	switch payload[0] {
 	case reqJoinGame:

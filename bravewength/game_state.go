@@ -37,7 +37,7 @@ func (g *gameState) newGame() {
 	g.gameLog = make([]gameEventInfo, 0, 10)
 }
 
-func (g *gameState) broadcastRolesState(players []games.Client) {
+func (g *gameState) broadcastRolesState(players []*games.Client) {
 	msg := g.encodeRolesState()
 
 	for _, p := range players {
@@ -45,14 +45,14 @@ func (g *gameState) broadcastRolesState(players []games.Client) {
 	}
 }
 
-func (g *gameState) broadcastBoardState(players []games.Client) {
+func (g *gameState) broadcastBoardState(players []*games.Client) {
 	boardStateKnower := g.encodeBoardState(true)
 	boardStateSeeker := g.encodeBoardState(false)
 
 	for _, p := range players {
 		var boardState []byte
 
-		if g.roles[p.ID()].IsKnower() {
+		if g.roles[p.ID].IsKnower() {
 			boardState = boardStateKnower
 		} else {
 			boardState = boardStateSeeker
@@ -62,16 +62,16 @@ func (g *gameState) broadcastBoardState(players []games.Client) {
 	}
 }
 
-func (g *gameState) Init(players []games.Client) {
+func (g *gameState) Init(players []*games.Client) {
 	// Don't need to broadcast roles because they all start out as
 	// spectators, and spectator is the default role
 	g.broadcastBoardState(players)
 }
 
-func (g *gameState) HandleNewPlayer(c games.Client) {
+func (g *gameState) HandleNewPlayer(c *games.Client) {
 	// Don't need to broadcast roles because they all start out as
 	// spectators, and spectator is the default role
-	c.Send(g.encodeBoardState(g.roles[c.ID()].IsKnower()))
+	c.Send(g.encodeBoardState(g.roles[c.ID].IsKnower()))
 }
 
 func (g *gameState) Deinit() {

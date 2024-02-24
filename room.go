@@ -13,7 +13,7 @@ const (
 
 // request contains a request payload and the client it originated from.
 type request struct {
-	src *client
+	src *Client
 	msg []byte
 }
 
@@ -35,13 +35,13 @@ type room struct {
 	ID   uint32
 	Name string
 
-	members []Client
+	members []*Client
 
 	// Incoming client connections
-	register chan *client
+	register chan *Client
 
 	// Dead client connections which need to be removed from the room
-	unregister chan *client
+	unregister chan *Client
 
 	// Incoming requests from connected clients; requests are deserialized (and invalid requests
 	// are rejected) in each client's read goroutine so that the work can be done in parallel
@@ -67,7 +67,7 @@ func (r *room) broadcastAllMembersState() {
 	}
 }
 
-func (r *room) removeMember(c *client) {
+func (r *room) removeMember(c *Client) {
 	pos := -1
 	for i := range r.members {
 		if r.members[i] == c {
@@ -96,8 +96,8 @@ func (r *room) removeMember(c *client) {
 	// client read/write goroutines and the room goroutine?
 	close(c.send)
 
-	r.broadcast(encodeDeleteMemberState(c.id))
-	r.debug("Unregistered client [ID: %s, Name: %q]", c.id.String(), c.name)
+	r.broadcast(encodeDeleteMemberState(c.ID))
+	r.debug("Unregistered client [ID: %s, Name: %q]", c.ID.String(), c.Name)
 }
 
 // processEvents should be started in a new goroutine as soon as a room is created. This
@@ -110,11 +110,11 @@ func (r *room) processEventsUntilClosed() {
 	for {
 		select {
 		case c := <-r.register:
-			r.debug("Registering client [ID: %s, Name: %q]", c.id.String(), c.name)
+			r.debug("Registering client [ID: %s, Name: %q]", c.ID.String(), c.Name)
 
 			// NOTE: this is the first time anything will be pushed on the new client's send
 			// channel, so the '<-' operations below literally cannot fail (channel is buffered)
-			c.send <- encodeConnectionState(r.ID, c.id)
+			c.send <- encodeConnectionState(r.ID, c.ID)
 			c.send <- encodeAllChatMessagesState(r.chat)
 			r.members = append(r.members, c)
 			r.broadcastAllMembersState() // TODO: just set member? still need all members for new client

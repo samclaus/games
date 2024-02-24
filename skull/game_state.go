@@ -93,17 +93,17 @@ func (g *gameState) reclaimPlayedCards() {
 	}
 }
 
-func (g *gameState) broadcastState(players []games.Client) {
+func (g *gameState) broadcastState(players []*games.Client) {
 	for _, p := range players {
 		p.Send(nil) // TODO
 	}
 }
 
-func (g *gameState) Init(players []games.Client) {
+func (g *gameState) Init(players []*games.Client) {
 	// TODO
 }
 
-func (g *gameState) HandleNewPlayer(c games.Client) {
+func (g *gameState) HandleNewPlayer(c *games.Client) {
 	// TODO
 }
 

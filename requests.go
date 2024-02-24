@@ -54,8 +54,8 @@ func (r *room) handleRequest(req request) {
 		r.broadcast(encodeCurrentGameState(""))
 
 	case reqMessageChat:
-		if r.chat.addMessage(req.src.id, body) {
-			r.broadcast(encodeNewChatMessageState(req.src.id, body))
+		if r.chat.addMessage(req.src.ID, body) {
+			r.broadcast(encodeNewChatMessageState(req.src.ID, body))
 		}
 
 	}

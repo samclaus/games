@@ -95,9 +95,9 @@ func (s *server) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 			gameRegistry: s.games,
 			ID:           s.roomCtr,
 			Name:         roomName,
-			members:      make([]Client, 0, 15), // TODO: enforce max 15 members
-			register:     make(chan *client),
-			unregister:   make(chan *client),
+			members:      make([]*Client, 0, 15), // TODO: enforce max 15 members
+			register:     make(chan *Client),
+			unregister:   make(chan *Client),
 			requests:     make(chan request, 100),
 			chat:         &chatBuffer{},
 		}
@@ -141,7 +141,7 @@ func (s *server) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cli := &client{conn, clientID, playerName, rm, make(chan []byte, 100)}
+	cli := &Client{clientID, playerName, conn, rm, make(chan []byte, 100)}
 	rm.register <- cli
 
 	// Start read/write in new goroutine so we can return from this HTTP handler and let the

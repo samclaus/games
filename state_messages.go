@@ -25,23 +25,20 @@ func encodeConnectionState(roomID uint32, clientID uuid.UUID) []byte {
 	return append(msg, clientID[:]...)
 }
 
-func encodeSetMembersState(members []Client) []byte {
+func encodeSetMembersState(members []*Client) []byte {
 	// 2 header bytes; each member has 16-byte UUID, 1-byte name length, then name value
 	msgLen := 2 + len(members)*17
 	for _, c := range members {
-		msgLen += len(c.Name())
+		msgLen += len(c.Name)
 	}
 
 	msg := make([]byte, 0, msgLen)
 	msg = append(msg, scopeRoom, roomStateSetMembers)
 
 	for _, c := range members {
-		id := c.ID()
-		name := c.Name()
-
-		msg = append(msg, id[:]...)
-		msg = append(msg, byte(len(name)))
-		msg = append(msg, name...)
+		msg = append(msg, c.ID[:]...)
+		msg = append(msg, byte(len(c.Name)))
+		msg = append(msg, c.Name...)
 	}
 
 	return msg

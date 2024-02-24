@@ -42,14 +42,14 @@ const (
 // implements all turn-based game logic for Bravewength.
 //
 // TODO: tell room to disconnect client for sending invalid request structure?
-func (g *gameState) HandleRequest(players []games.Client, src games.Client, payload []byte) {
+func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, payload []byte) {
 	if len(payload) == 0 {
 		return
 	}
 
 	body := payload[1:]
 	turn := g.currentTurn
-	srcID := src.ID()
+	srcID := src.ID
 	srcRole := g.roles[srcID]
 
 	switch payload[0] {
