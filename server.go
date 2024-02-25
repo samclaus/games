@@ -10,7 +10,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const idCookieName = "id"
+const (
+	idCookieName   = "id"
+	maxRoomMembers = 15
+)
 
 type server struct {
 	upgrader websocket.Upgrader
@@ -95,7 +98,7 @@ func (s *server) HandleJoinRoom(w http.ResponseWriter, r *http.Request) {
 			gameRegistry: s.games,
 			ID:           s.roomCtr,
 			Name:         roomName,
-			members:      make([]*Client, 0, 15), // TODO: enforce max 15 members
+			members:      make([]*Client, 0, maxRoomMembers),
 			register:     make(chan *Client),
 			unregister:   make(chan *Client),
 			requests:     make(chan request, 100),

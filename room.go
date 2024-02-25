@@ -112,6 +112,11 @@ func (r *room) processEventsUntilClosed() {
 		case c := <-r.register:
 			r.debug("Registering client [ID: %s, Name: %q]", c.ID.String(), c.Name)
 
+			if len(r.members) >= maxRoomMembers {
+				close(c.send)
+				continue
+			}
+
 			// NOTE: this is the first time anything will be pushed on the new client's send
 			// channel, so the '<-' operations below literally cannot fail (channel is buffered)
 			c.send <- encodeConnectionState(r, c.ID)
