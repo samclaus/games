@@ -6,6 +6,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/samclaus/games"
 	"github.com/samclaus/games/bravewength"
+	"github.com/samclaus/games/skull"
 )
 
 func main() {
@@ -15,6 +16,7 @@ func main() {
 			CheckOrigin: func(r *http.Request) bool { return true },
 		},
 		bravewength.Game(nil), // use default word deck
+		skull.Game(),
 	)
 
 	mux.HandleFunc("/rooms", s.HandleGetRooms)
