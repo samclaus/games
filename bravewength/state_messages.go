@@ -1,7 +1,6 @@
 package bravewength
 
 import (
-	"github.com/google/uuid"
 	"github.com/samclaus/games"
 )
 
@@ -42,15 +41,14 @@ type gameEventInfo struct {
 }
 
 type boardStateBody struct {
-	Roles       map[uuid.UUID]role `json:"roles"`
-	Words       []string           `json:"words"`
-	DiscTypes   string             `json:"disc_types"`
-	FullTypes   string             `json:"full_types"`
-	CurrentTurn role               `json:"current_turn"`
-	CurrentClue string             `json:"current_clue"`
-	GameEnded   bool               `json:"game_ended"`
-	Winner      team               `json:"winner"`
-	Log         []gameEventInfo    `json:"log"`
+	Words       []string        `json:"words"`
+	DiscTypes   string          `json:"disc_types"`
+	FullTypes   string          `json:"full_types"`
+	CurrentTurn role            `json:"current_turn"`
+	CurrentClue string          `json:"current_clue"`
+	GameEnded   bool            `json:"game_ended"`
+	Winner      team            `json:"winner"`
+	Log         []gameEventInfo `json:"log"`
 }
 
 func (g *gameState) encodeBoardState(showFullLayout bool) []byte {
