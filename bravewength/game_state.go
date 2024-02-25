@@ -69,9 +69,8 @@ func (g *gameState) Init(players []*games.Client) {
 }
 
 func (g *gameState) HandleNewPlayer(c *games.Client) {
-	// Don't need to broadcast roles because they all start out as
-	// spectators, and spectator is the default role
 	c.Send(g.encodeBoardState(g.roles[c.ID].IsKnower()))
+	c.Send(g.encodeRolesState())
 }
 
 func (g *gameState) Deinit() {
