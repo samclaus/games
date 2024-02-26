@@ -1,7 +1,6 @@
 package bravewength
 
-// wordDeck is a massive set of words to generate a board from.
-var wordDeck = [...]string{
+var defaultDeck = [...]string{
 	"zero",
 	"midnight",
 	"yard",

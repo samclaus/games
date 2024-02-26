@@ -4,6 +4,10 @@ import "math/rand"
 
 type cardType byte
 
+func (ct cardType) ascii() byte {
+	return byte(ct + 48)
+}
+
 const boardSize = 25
 const (
 	cardTypeNeutral cardType = iota
@@ -14,6 +18,7 @@ const (
 )
 
 type board struct {
+	Deck      []string
 	Words     [boardSize]string
 	FullTypes [boardSize]cardType
 	DiscTypes [boardSize]cardType
@@ -43,13 +48,13 @@ func (b *board) reset() {
 	randomDeckIndices := make(map[int]struct{})
 
 	for len(randomDeckIndices) < boardSize {
-		randomDeckIndices[rand.Intn(len(wordDeck))] = struct{}{}
+		randomDeckIndices[rand.Intn(len(b.Deck))] = struct{}{}
 	}
 
 	boardIndex := 0
 
 	for deckIndex := range randomDeckIndices {
-		b.Words[boardIndex] = wordDeck[deckIndex]
+		b.Words[boardIndex] = b.Deck[deckIndex]
 		boardIndex += 1
 	}
 
