@@ -105,7 +105,7 @@ func encodeNewChatMessageState(src uuid.UUID, content []byte) []byte {
 }
 
 func encodeSetGameState(gameID string) []byte {
-	msg := make([]byte, 0, 2+len(gameID))
+	msg := make([]byte, 0, 2+1+len(gameID))
 	msg = append(msg, scopeRoom, roomStateSetGame)
 	return appendStr(msg, gameID)
 }
