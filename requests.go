@@ -34,11 +34,13 @@ func (r *room) handleRequest(req request) {
 			return
 		}
 
+		// TODO: can we just use bytes directly? Should consider places where
+		// allocations can be avoided
 		gameID := string(body)
 
 		if factory := r.gameRegistry[gameID]; factory != nil {
 			r.currentGameID = gameID
-			r.broadcast(encodeCurrentGameState(gameID))
+			r.broadcast(encodeSetGameState(gameID))
 			r.currentGame = factory.NewInstance()
 			r.currentGame.Init(r.members)
 		}
@@ -51,7 +53,7 @@ func (r *room) handleRequest(req request) {
 		r.currentGame.Deinit()
 		r.currentGameID = ""
 		r.currentGame = nil
-		r.broadcast(encodeCurrentGameState(""))
+		r.broadcast(encodeSetGameState(""))
 
 	case reqMessageChat:
 		if r.chat.addMessage(req.src.ID, body) {

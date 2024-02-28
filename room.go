@@ -119,12 +119,8 @@ func (r *room) processEventsUntilClosed() {
 
 			// NOTE: this is the first time anything will be pushed on the new client's send
 			// channel, so the '<-' operations below literally cannot fail (channel is buffered)
-			c.send <- encodeConnectionState(r, c.ID)
+			c.send <- encodeInitState(r, c.ID)
 			c.send <- encodeAllChatMessagesState(r.chat)
-
-			if r.currentGameID != "" {
-				c.send <- encodeCurrentGameState(r.currentGameID)
-			}
 
 			r.members = append(r.members, c)
 			r.broadcastAllMembersState() // TODO: just set member? still need all members for new client

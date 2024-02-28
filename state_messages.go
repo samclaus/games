@@ -10,20 +10,23 @@ import (
 // message a room will send to clients to update their state.
 
 const (
-	roomStateConnection      byte = iota // 4-byte room ID (big endian uint32) then 16-byte client UUID, rest is room name
+	roomStateInit            byte = iota // 4-byte room ID (big endian uint32) then 16-byte client UUID, room name (length prefixed), current game (length prefixed)
 	roomStateSetMembers                  // emits 0 or more member UUID/name pairs
 	roomStateDeleteMembers               // emits 0 or more member UUIDs that disconnected
 	roomStateAllChatMessages             // uint16 length of message history, followed by still available messages (each is 16-byte client UUID, 1-byte message length, <message length>-byte contents)
 	roomStateNewChatMessage              // 16-byte client UUID, then rest is message contents
-	roomStateCurrentGame                 // emits UTF-8 encoded game ID, which may be empty (0 bytes)
+	roomStateSetGame                     // emits UTF-8 encoded game ID, which may be empty (0 bytes)
 )
 
-func encodeConnectionState(r *room, clientID uuid.UUID) []byte {
-	msg := make([]byte, 0, 2+4+16+len(r.Name))
-	msg = append(msg, scopeRoom, roomStateConnection)
+func encodeInitState(r *room, clientID uuid.UUID) []byte {
+	msg := make([]byte, 0, 2+4+16+1+len(r.Name)+1+len(r.currentGameID))
+	msg = append(msg, scopeRoom, roomStateInit)
 	msg = binary.BigEndian.AppendUint32(msg, r.ID)
 	msg = append(msg, clientID[:]...)
-	return append(msg, r.Name...)
+	msg = append(msg, byte(len(r.Name)))
+	msg = append(msg, r.Name...)
+	msg = append(msg, byte(len(r.currentGameID)))
+	return append(msg, r.currentGameID...)
 }
 
 func encodeSetMembersState(members []*Client) []byte {
@@ -64,8 +67,8 @@ func encodeNewChatMessageState(src uuid.UUID, content []byte) []byte {
 	return append(msg, content...)
 }
 
-func encodeCurrentGameState(gameID string) []byte {
+func encodeSetGameState(gameID string) []byte {
 	msg := make([]byte, 0, 2+len(gameID))
-	msg = append(msg, scopeRoom, roomStateCurrentGame)
+	msg = append(msg, scopeRoom, roomStateSetGame)
 	return append(msg, gameID...)
 }
