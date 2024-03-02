@@ -8,7 +8,7 @@ import (
 // Must not exceed 16 because we use uint16 bitset to flag players who "passed" a bid
 const maxPlayers = 6
 
-type gamePhase uint
+type gamePhase uint8
 
 const (
 	// NOTE: careful when changing order, some code uses <> comparisons
@@ -29,11 +29,11 @@ func (p gamePhase) Active() bool {
 type gameState struct {
 	hands    [maxPlayers]hand
 	phase    gamePhase // currently playing cards? bidding? attempting to pick cards for bid?
-	nplayers int       // how many players are there (from left; other hands unclaimed)
-	turn     int       // index of hand/player whose turn it is
+	nplayers uint8     // how many players are there (from left; other hands unclaimed)
+	turn     uint8     // index of hand/player whose turn it is
 	pcards   uint8     // total cards played, for validating bid amounts
 	bid      uint8     // current bid
-	bidder   int       // index of last hand/player who raised the bid
+	bidder   uint8     // index of last hand/player who raised the bid
 	passed   uint16    // bitset of hand/player indices that passed and cannot bid this time
 	taker    uint8     // index of hand/player whose skull got picked by bidder; takes card from bidder
 	winner   uuid.UUID // ID of client that won game; only valid for phaseWinner
@@ -53,26 +53,26 @@ func (g *gameState) lockInPlayers() {
 		}
 	}
 
-	for i := g.nplayers; i < len(g.hands); i++ {
+	for i := g.nplayers; i < maxPlayers; i++ {
 		g.hands[i].status = statusUnclaimed
 		g.hands[i].resetCardsAndScore()
 	}
 }
 
-func (g *gameState) getHand(clientID uuid.UUID) (int, *hand) {
+func (g *gameState) getHand(clientID uuid.UUID) (uint8, *hand) {
 	for i := range g.hands {
 		if g.hands[i].status == statusClaimed && g.hands[i].id == clientID {
-			return i, &g.hands[i]
+			return uint8(i), &g.hands[i]
 		}
 	}
-	return -1, nil
+	return 255, nil
 }
 
 // Finds the next player, in order (and handling loop-around), who still has
 // at least one card, which could be held or played. I.e., ignores players
 // who have been eliminated by losing all of their cards.
 func (g *gameState) nextTurn() {
-	for i := 0; i < g.nplayers; i++ {
+	for i := uint8(0); i < g.nplayers; i++ {
 		g.turn = (g.turn + 1) % g.nplayers
 
 		// TODO: can I refactor this somehow so that it's not always running
@@ -88,25 +88,26 @@ func (g *gameState) nextTurn() {
 func (g *gameState) reclaimPlayedCards() {
 	g.pcards = 0
 
-	for i := 0; i < g.nplayers; i++ {
+	for i := uint8(0); i < g.nplayers; i++ {
 		g.hands[i].reclaimPlayedCards()
 	}
 }
 
-func (g *gameState) broadcastState(players []*games.Client) {
+func (g *gameState) broadcastFullState(players []*games.Client) {
+	msg := g.encodeFullStateMessage()
 	for _, p := range players {
-		p.Send(nil) // TODO
+		p.Send(msg)
 	}
 }
 
 func (g *gameState) Init(players []*games.Client) {
-	// TODO
+	g.broadcastFullState(players)
 }
 
 func (g *gameState) HandleNewPlayer(c *games.Client) {
-	// TODO
+	c.Send(g.encodeFullStateMessage())
 }
 
 func (g *gameState) Deinit() {
-	// TODO
+	// Nothing for now
 }

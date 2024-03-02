@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type handStatus uint
+type handStatus = uint8
 
 const (
 	statusUnclaimed handStatus = iota
@@ -14,7 +14,7 @@ const (
 	statusLeft
 )
 
-type skullStatus uint8
+type skullStatus = uint8
 
 const (
 	skullInHand skullStatus = iota

@@ -71,7 +71,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 			g.hands[existingPos].status = statusUnclaimed
 		}
 
-		// TODO: broadcast new game state
+		g.broadcastFullState(players)
 
 	case reqLeaveGame:
 		pos := -1
@@ -92,7 +92,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 			g.hands[pos].status = statusUnclaimed
 		}
 
-		// TODO: broadcast new game state
+		g.broadcastFullState(players)
 
 	case reqRestartGame:
 		g.phase = phasePlay
@@ -101,8 +101,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 		g.bid = 0
 		g.passed = 0
 		g.lockInPlayers()
-
-		// TODO: broadcast new game state
+		g.broadcastFullState(players)
 
 	case reqAbortGame:
 		if !g.phase.Active() {
@@ -110,8 +109,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 		}
 
 		g.phase = phaseAborted
-
-		// TODO: broadcast new game state
+		g.broadcastFullState(players)
 
 	case reqPlay:
 		pos, hand := g.getHand(srcID)
@@ -127,7 +125,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 			return
 		}
 
-		cardIndex := uint8(body[0])
+		cardIndex := body[0]
 
 		if hand.skullStatus == skullInHand {
 			if cardIndex == hand.skullPos {
@@ -143,8 +141,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 
 		g.pcards++
 		g.nextTurn()
-
-		// TODO: broadcast new game state
+		g.broadcastFullState(players)
 
 	case reqBid:
 		pos, _ := g.getHand(srcID)
@@ -175,7 +172,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 			g.passed = 0
 		}
 
-		// TODO: broadcast state update
+		g.broadcastFullState(players)
 
 	case reqPass:
 		pos, _ := g.getHand(srcID)
@@ -197,7 +194,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 			g.passed = 0
 		}
 
-		// TODO: broadcast state update
+		g.broadcastFullState(players)
 
 	case reqPick:
 		pos, hand := g.getHand(srcID)
@@ -210,7 +207,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 		if g.phase != phasePick ||
 			g.turn != pos ||
 			len(body) != 1 ||
-			int(body[0]) >= g.nplayers {
+			body[0] >= g.nplayers {
 			return
 		}
 
@@ -253,7 +250,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 			}
 		}
 
-		// TODO: broadcast state update
+		g.broadcastFullState(players)
 
 	case reqMoveCard:
 		_, hand := g.getHand(srcID)
@@ -283,7 +280,7 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 
 		// TODO: how to track/broadcast card positions? Important for life-like gameplay
 
-		// TODO: broadcast state update
+		g.broadcastFullState(players)
 
 	case reqDoneShuffling:
 		// Ignore request if:
@@ -297,9 +294,8 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 		}
 
 		g.phase = phaseTakeCard
-		g.turn = int(g.taker)
-
-		// TODO: broadcast state
+		g.turn = g.taker
+		g.broadcastFullState(players)
 
 	case reqTakeCard:
 		pos, _ := g.getHand(srcID)
@@ -327,7 +323,6 @@ func (g *gameState) HandleRequest(players []*games.Client, src *games.Client, pa
 
 		bidder.hcards--
 		g.phase = phasePlay // NOTE: no need to change turn because taker goes first now
-
-		// TODO: broadcast state
+		g.broadcastFullState(players)
 	}
 }
